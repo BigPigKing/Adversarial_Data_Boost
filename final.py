@@ -1,15 +1,14 @@
-import os
-import tarfile
 import pandas as pd
 
 from typing import Dict
-from pathlib import Path
-from itertools import chain
 from overrides import overrides
-from allennlp.common.file_utils import cached_path
-from allennlp.data import DatasetReader
-from allennlp.data.tokenizers import Tokenizer, WordTokenizer
+from torch.utils.data import DataLoader
+from allennlp.data import DatasetReader, Instance, allennlp_collate
+from allennlp.data.fields import LabelField, TextField, ListField
+from allennlp.data.tokenizers import Tokenizer, SpacyTokenizer
+from allennlp.data.tokenizers.sentence_splitter import SentenceSplitter, SpacySentenceSplitter
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
+from allennlp.data.vocabulary import Vocabulary
 
 
 DATA_PATH = "data/imdb.csv"
@@ -17,50 +16,56 @@ DATA_PATH = "data/imdb.csv"
 
 @DatasetReader.register("imdb")
 class ImdbDatasetReader(DatasetReader):
-    TAR_URL = 'https://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz'
-    TRAIN_DIR = 'aclImdb/train'
-    TEST_DIR = 'aclImdb/test'
-
     def __init__(self,
                  token_indexers: Dict[str, TokenIndexer] = None,
                  tokenizer: Tokenizer = None,
+                 sentence_splitter: SentenceSplitter = None,
                  lazy: bool = False) -> None:
         super().__init__(lazy=lazy)
 
-        self._tokenizer = tokenizer or WordTokenizer()
-        self._token_indexers = token_indexers or {'tokens': SingleIdTokenIndexer}
+        self._tokenizer = tokenizer or SpacyTokenizer()
+        self._sentence_splitter = sentence_splitter or SpacySentenceSplitter()
+        self._token_indexers = token_indexers or {'tokens': SingleIdTokenIndexer()}
 
     @overrides
     def _read(self, file_path):
-        tar_path = cached_path(self.TAR_URL)
-        tf = tarfile.open(tar_path, 'r')
-        cache_dir = Path(os.path.dirname(tar_path))
+        input_df = pd.read_csv(file_path)[:100]
 
-        if not (cache_dir / self.TRAIN_DIR).exists() and not (cache_dir / self.TEST_DIR).exists():
-            tf.extractall(cache_dir)
-        else:
-            pass
+        reviews = input_df["review"].to_list()
+        sentiment_labels = input_df["sentiment"].to_list()
 
-        if file_path == "train":
-            pos_dir = os.path.join(self.TRAIN_DIR, "pos")
-            neg_dir = os.path.join(self.TRAIN_DIR, "neg")
-        elif file_path == "test":
-            pos_dir = os.path.join(self.TEST_DIR, "pos")
-            neg_dir = os.path.join(self.TEST_DIR, "neg")
-        else:
-            raise ValueError(f"only 'train' and 'test' are valid for 'file_path', but '{file_path}' is given.")
+        # splited sentence
+        splited_reviews = self._sentence_splitter.batch_split_sentences(reviews)
 
-        path = chain(Path(cache_dir.joinpath(pos_dir)).glob("*.txt"),
-                     Path(cache_dir.joinpath(neg_dir)).glob("*.txt"))
+        # iterete over review
+        for review_idx, splited_review in enumerate(splited_reviews):
+            sentence_fields = []
 
-        for p in path:
-            yield
+            # iterate over sentence in review
+            for sentence in splited_review:
+                text_field = TextField(self._tokenizer.tokenize(sentence),
+                                       token_indexers=self._token_indexers)
+                sentence_fields.append(text_field)
+
+            fields = {"review": ListField(sentence_fields), "label": LabelField(sentiment_labels[review_idx])}
+
+            yield Instance(fields)
 
 
 def main():
-    input_df = pd.read_csv(DATA_PATH)
+    # Set Dataset Reader
+    imdb_dataset_reader = ImdbDatasetReader()
+    imdb_ds = imdb_dataset_reader.read(DATA_PATH)
 
-    print(input_df)
+    # Set Vocabulary Set
+    vocab = Vocabulary.from_instances(imdb_ds)
+    imdb_ds.index_with(vocab)
+
+    # Batch begin
+    data_loader = DataLoader(imdb_ds, batch_size=3, collate_fn=allennlp_collate)
+
+    for batch in data_loader:
+        print(batch["review"]["tokens"]["tokens"].shape)
 
 
 if __name__ == '__main__':
