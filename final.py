@@ -1,8 +1,10 @@
+import torch
 import pandas as pd
 import torch.nn as nn
 import torch.optim as optim
 
 from typing import Dict, List
+from tqdm import tqdm
 from overrides import overrides
 from torch.utils.data import DataLoader, random_split
 from allennlp.data import DatasetReader, Instance, allennlp_collate, AllennlpDataset
@@ -19,9 +21,11 @@ from allennlp.models.model import Model
 from allennlp.nn.util import get_text_field_mask
 from allennlp.modules import FeedForward
 from allennlp.training import GradientDescentTrainer
+from allennlp.training.metrics import CategoricalAccuracy
 
 
 DATA_PATH = "data/imdb.csv"
+USE_GPU = torch.cuda.is_available()
 
 
 @DatasetReader.register("imdb")
@@ -39,7 +43,7 @@ class ImdbDatasetReader(DatasetReader):
 
     @overrides
     def _read(self, file_path):
-        input_df = pd.read_csv(file_path)[:100]
+        input_df = pd.read_csv(file_path)
 
         reviews = input_df["review"].to_list()
         sentiment_labels = input_df["sentiment"].to_list()
@@ -48,7 +52,7 @@ class ImdbDatasetReader(DatasetReader):
         splited_reviews = self._sentence_splitter.batch_split_sentences(reviews)
 
         # iterete over review
-        for review_idx, splited_review in enumerate(splited_reviews):
+        for review_idx, splited_review in tqdm(enumerate(splited_reviews)):
             yield self.text_to_instance(splited_review, sentiment_labels[review_idx])
 
     @overrides
@@ -104,6 +108,11 @@ class Sentiment_Model(Model):
         # Model Output Structure
         self.feedforward = feedforward
         self.classification_layer = nn.Linear(self.feedforward.get_output_dim(), vocab.get_vocab_size("labels"))
+        self.final_activation = nn.Softmax()
+
+        # Loss initiailization
+        self.criterion = nn.CrossEntropyLoss()
+        self.accuracy = CategoricalAccuracy()
 
     @overrides
     def forward(
@@ -112,24 +121,65 @@ class Sentiment_Model(Model):
         label
     ):
         # Embedder first
+        embeded_review = self.embedder(review, num_wrapping_dims=1)
 
+        # Word s2s, s2v encoding
+        num_of_batch = embeded_review.shape[0]
+        num_of_sent = embeded_review.shape[1]
+        num_of_word = embeded_review.shape[2]
+        num_of_word_dim = embeded_review.shape[3]
 
-        # Encode sentence first
-        review["tokens"]["tokens"] = review["tokens"]["tokens"].view(
-            review["tokens"]["tokens"].shape[0] * review["tokens"]["tokens"].shape[1],
-            review["tokens"]["tokens"].shape[2]
+        embeded_review = embeded_review.view(
+            num_of_batch * num_of_sent,
+            num_of_word,
+            num_of_word_dim
         )
+
+        review_mask = get_text_field_mask(review, num_wrapping_dims=1).view(
+            num_of_batch * num_of_sent,
+            num_of_word
+        )
+
+        W_E = self.word_s2s_encoder(embeded_review, review_mask)
+        W_E = self.word_s2v_encoder(W_E, review_mask)
+
+        # Sent s2s, s2v encoding
+        W_E = W_E.view(
+            num_of_batch,
+            num_of_sent,
+            self.word_s2v_encoder.get_output_dim()
+        )
+
         review_mask = get_text_field_mask(review)
+        S_E = self.sent_s2s_encoder(W_E, review_mask)
+        S_E = self.sent_s2v_encoder(W_E, review_mask)
 
-        print(review["tokens"]["tokens"].shape)
-        print(review_mask.shape)
+        # Prepare to output
+        F_E = self.feedforward(S_E)
+        Z = self.classification_layer(F_E)
+        A = self.final_activation(Z)
 
-        sentences_review_seq_vec = self.word_s2s_encoder(review["tokens"]["tokens"], review_mask)
-        print(sentences_review_seq_vec)
+        # Prepare to model output
+        output_dict = {}
+        predicts = torch.argmax(A, dim=1).cpu().tolist()
+        name_of_predicts = [self.vocab.get_token_from_index(predict, namespace="labels") for predict in predicts]
 
-        print(review_mask.shape)
-        print(label.shape)
-        print("OK")
+        output_dict = {
+            "logits": Z,
+            "class_probabilities": A,
+            "predict_label": name_of_predicts
+        }
+
+        self.accuracy(Z, label)
+
+        if label is not None:
+            loss = self.criterion(Z, label)
+            output_dict["loss"] = loss
+
+        return output_dict
+
+    def get_metrics(self, reset: bool = False) -> Dict[str, float]:
+        return {'accuracy': self.accuracy.get_metric(reset)}
 
 
 def main():
@@ -147,15 +197,16 @@ def main():
     test_ds.index_with(vocab)
 
     # Batch begin
-    train_data_loader = DataLoader(train_ds, batch_size=30, shuffle=True, collate_fn=allennlp_collate)
-    valid_data_loader = DataLoader(valid_ds, batch_size=30, collate_fn=allennlp_collate)
-    test_data_loader = DataLoader(test_ds, batch_size=30, collate_fn=allennlp_collate)
+    train_data_loader = DataLoader(train_ds, batch_size=20, shuffle=True, collate_fn=allennlp_collate)
+    valid_data_loader = DataLoader(valid_ds, batch_size=20, collate_fn=allennlp_collate)
+    test_data_loader = DataLoader(test_ds, batch_size=20, collate_fn=allennlp_collate)
 
     # Embedder declartion
     glove_embedding = Embedding(
         embedding_dim=200,
         vocab=vocab,
-        padding_index=0
+        padding_index=0,
+        pretrained_file="glove_200d.txt"
     )
     embedder = BasicTextFieldEmbedder(token_embedders={"tokens": glove_embedding})
 
@@ -205,11 +256,17 @@ def main():
         feedforward
     )
 
+    # Model move to gpu
+    if USE_GPU is True:
+        gru_sentiment_model = gru_sentiment_model.cuda()
+
     # Trainer Declarition
     trainer = GradientDescentTrainer(
         gru_sentiment_model,
         optim.RMSprop(gru_sentiment_model.parameters()),
-        train_data_loader
+        train_data_loader,
+        validation_data_loader=valid_data_loader,
+        num_epochs=500
     )
 
     # Trainer Train
