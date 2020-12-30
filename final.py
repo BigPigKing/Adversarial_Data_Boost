@@ -111,8 +111,22 @@ class Sentiment_Model(Model):
         review,
         label
     ):
+        # Embedder first
+
+
+        # Encode sentence first
+        review["tokens"]["tokens"] = review["tokens"]["tokens"].view(
+            review["tokens"]["tokens"].shape[0] * review["tokens"]["tokens"].shape[1],
+            review["tokens"]["tokens"].shape[2]
+        )
+        review_mask = get_text_field_mask(review)
+
         print(review["tokens"]["tokens"].shape)
-        review_mask = get_text_field_mask(review, num_wrapping_dims=1)
+        print(review_mask.shape)
+
+        sentences_review_seq_vec = self.word_s2s_encoder(review["tokens"]["tokens"], review_mask)
+        print(sentences_review_seq_vec)
+
         print(review_mask.shape)
         print(label.shape)
         print("OK")
@@ -141,8 +155,7 @@ def main():
     glove_embedding = Embedding(
         embedding_dim=200,
         vocab=vocab,
-        padding_index=0,
-        pretrained_file="glove_200d.txt"
+        padding_index=0
     )
     embedder = BasicTextFieldEmbedder(token_embedders={"tokens": glove_embedding})
 
