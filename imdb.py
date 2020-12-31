@@ -22,9 +22,9 @@ from allennlp.nn.util import get_text_field_mask
 from allennlp.modules import FeedForward
 from allennlp.training import GradientDescentTrainer
 from allennlp.training.metrics import CategoricalAccuracy
+from allennlp_models.classification.dataset_readers import StanfordSentimentTreeBankDatasetReader
 
 
-DATA_PATH = "data/imdb.csv"
 USE_GPU = torch.cuda.is_available()
 
 
@@ -73,8 +73,8 @@ class ImdbDatasetReader(DatasetReader):
 
 
 def split_dataset(input_ds,
-                  train_ratio=0.7,
-                  valid_ratio=0.1):
+                  train_ratio=0.49,
+                  valid_ratio=0.49):
     train_len = int(len(input_ds) * train_ratio)
     valid_len = int(len(input_ds) * valid_ratio)
     test_len = len(input_ds) - train_len - valid_len
@@ -182,13 +182,32 @@ class Sentiment_Model(Model):
         return {'accuracy': self.accuracy.get_metric(reset)}
 
 
-def main():
-    # Set Dataset Reader
+def get_imdb_ds(data_path="data/imdb.csv"):
     imdb_dataset_reader = ImdbDatasetReader()
-    imdb_ds = imdb_dataset_reader.read(DATA_PATH)
+    imdb_ds = imdb_dataset_reader.read(data_path)
 
-    # Split to train and test
     train_ds, valid_ds, test_ds = split_dataset(imdb_ds)
+
+    return train_ds, valid_ds, test_ds
+
+
+def get_sst_ds(
+    train_data_path="data/sst/train.txt",
+    valid_data_path="data/sst/valid.txt",
+    test_data_path="data/sst/test.txt"
+):
+    sst_dataset_reader = StanfordSentimentTreeBankDatasetReader()
+    train_ds = sst_dataset_reader(train_data_path)
+    valid_ds = sst_dataset_reader(valid_data_path)
+    test_ds = sst_dataset_reader(test_data_path)
+
+    return train_ds, valid_ds, test_ds
+
+
+def main():
+    # Get Dataset
+    # train_ds, valid_ds, test_ds = get_imdb_ds()
+    train_ds, valid_ds, test_ds = get_sst_ds()
 
     # Set Vocabulary Set
     vocab = Vocabulary.from_instances(train_ds)
@@ -197,9 +216,9 @@ def main():
     test_ds.index_with(vocab)
 
     # Batch begin
-    train_data_loader = DataLoader(train_ds, batch_size=20, shuffle=True, collate_fn=allennlp_collate)
-    valid_data_loader = DataLoader(valid_ds, batch_size=20, collate_fn=allennlp_collate)
-    test_data_loader = DataLoader(test_ds, batch_size=20, collate_fn=allennlp_collate)
+    train_data_loader = DataLoader(train_ds, batch_size=15, shuffle=True, collate_fn=allennlp_collate)
+    valid_data_loader = DataLoader(valid_ds, batch_size=15, collate_fn=allennlp_collate)
+    test_data_loader = DataLoader(test_ds, batch_size=15, collate_fn=allennlp_collate)
 
     # Embedder declartion
     glove_embedding = Embedding(
@@ -214,7 +233,7 @@ def main():
     word_s2s_encoder = GruSeq2SeqEncoder(
         input_size=embedder.get_output_dim(),
         hidden_size=300,
-        num_layers=2,
+        num_layers=1,
         bidirectional=True
     )
     word_s2v_encoder = GruSeq2VecEncoder(
@@ -226,7 +245,7 @@ def main():
     sent_s2s_encoder = GruSeq2SeqEncoder(
         input_size=word_s2v_encoder.get_output_dim(),
         hidden_size=300,
-        num_layers=2,
+        num_layers=1,
         bidirectional=True
     )
     sent_s2v_encoder = GruSeq2VecEncoder(
@@ -263,7 +282,7 @@ def main():
     # Trainer Declarition
     trainer = GradientDescentTrainer(
         gru_sentiment_model,
-        optim.RMSprop(gru_sentiment_model.parameters()),
+        optim.Adam(gru_sentiment_model.parameters(), lr=0.00001),
         train_data_loader,
         validation_data_loader=valid_data_loader,
         num_epochs=500
