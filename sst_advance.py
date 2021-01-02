@@ -2,7 +2,6 @@ import re
 import torch
 import random
 import logging
-import itertools
 import torch.nn as nn
 import torch.optim as optim
 import nlpaug.augmenter.word as naw
@@ -171,9 +170,9 @@ class Sentence_Augmenter(object):
             # naw.ContextualWordEmbsAug(model_path="distilbert-base-uncased", action="substitute"),
             # naw.ContextualWordEmbsAug(model_path="roberta-base", action="substitute"),
             # naw.ContextualWordEmbsAug(model_path="albert-base-v2", action="substitute"),
-            naw.SynonymAug(aug_src="wordnet"),
-            naw.SynonymAug(aug_src="ppdb", model_path="pretrained_weight/ppdb-2.0-m-all"),
-            # naw.RandomWordAug(action="swap")
+            # naw.SynonymAug(aug_src="wordnet"),
+            # naw.SynonymAug(aug_src="ppdb", model_path="pretrained_weight/ppdb-2.0-m-all"),
+            naw.RandomWordAug(action="swap")
         ]
         self.tokenizer = SpacyTokenizer()
 
@@ -258,18 +257,16 @@ class Sentence_Augmenter(object):
         return batch_augmented_sentences_with_token_id
 
 
-class REINFORCE_Model():
+class REINFORCE_Model(nn.Module):
     def __init__(
         self,
         num_of_action: int,
-        s2s_encoder: GruSeq2SeqEncoder,
-        s2v_encoder: GruSeq2VecEncoder
+        sentence_encoder: nn.Sequential
     ):
         super().__init__()
         self.num_of_action = num_of_action
         self.action_list = list(range(0, num_of_action))
-        self.s2s_encoder = s2s_encoder
-        self.s2v_encoder = s2v_encoder
+        self.sentence_encoder = sentence_encoder
 
     def forward(
         self,
@@ -290,92 +287,101 @@ class Sentiment_Model(Model):
         embedder: BasicTextFieldEmbedder,
         s2s_encoder: GruSeq2SeqEncoder,
         s2v_encoder: GruSeq2VecEncoder,
-        feedforward: FeedForward
+        feedforward: FeedForward,
     ):
         super().__init__(vocab)
         # Model Augmenter
         self.vocab = vocab
         self.augmenter = Sentence_Augmenter(vocab)
 
-        # Model Reinforce
-        self.reinforce = REINFORCE_Model(self.augmenter.get_num_of_augment_action(), s2s_encoder, s2v_encoder)
-
-        # Model Encoder Structure
+        # Small Module
         self.embedder = embedder
         self.s2s_encoder = s2s_encoder
         self.s2v_encoder = s2v_encoder
+        self.feedforward = feedforward
+        self.classify_layer = nn.Linear(feedforward.get_output_dim(), vocab.get_vocab_size("labels"))
+
+        # Model Encoder Structure
+        self.sentence_encoder = nn.Sequential(
+            self.embedder,
+            self.s2s_encoder,
+            self.s2v_encoder,
+        )
 
         # Model Output Structure
-        self.feedforward = feedforward
-        self.classification_layer = nn.Linear(self.feedforward.get_output_dim(), vocab.get_vocab_size("labels"))
-        self.final_activation = nn.Softmax()
+        self.sentiment_classifier = nn.Sequential(
+            self.feedforward,
+            self.classify_layer
+        )
+
+        # Model Reinforcement
+        self.reinforcer = REINFORCE_Model(
+            self.augmenter.get_num_of_augment_action(),
+            self.sentence_encoder
+        )
 
         # Loss initiailization
-        self.criterion = nn.CrossEntropyLoss()
+        self.classification_criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.Adam(self.parameters(), lr=0.00001)
         self.accuracy = CategoricalAccuracy()
 
-    def _anchor_forward(
+    def _manipulate_requires_grad(
         self,
-        tokens,
-        label
+        gate_option: bool,
+        sequential_module: nn.Sequential
     ):
-        # Embedder first
+        for para in sequential_module.parameters():
+            para.requires_grad = gate_option
+
+    def _encode_sentence(
+        self,
+        tokens
+    ):
+        # Embed first
         E = self.embedder(tokens)
 
-        # Word s2s, s2v encoding
+        # Word s2s, s2v encode
         tokens_mask = get_text_field_mask(tokens)
 
         E_S = self.s2s_encoder(E, tokens_mask)
         E_V = self.s2v_encoder(E_S, tokens_mask)
 
-        # Prepare to output
-        F_E = self.feedforward(E_V)
-        Z = self.classification_layer(F_E)
-        A = self.final_activation(Z)
+        return E_V
 
-        # Prepare to model output
-        output_dict = {}
-        predicts = torch.argmax(A, dim=1).cpu().tolist()
-        name_of_predicts = [self.vocab.get_token_from_index(predict, namespace="labels") for predict in predicts]
-
-        output_dict = {
-            "logits": Z,
-            "class_probabilities": A,
-            "predict_label": name_of_predicts
-        }
-
-        self.accuracy(Z, label)
-
-        if label is not None:
-            loss = self.criterion(Z, label)
-            output_dict["loss"] = loss
-
-        return output_dict
-
-    def _augment_forward(
+    def _classify_sentence(
         self,
-        augmented_tokens,
+        sentences_embedding
+    ):
+        F_E = self.feedforward(sentences_embedding)
+        Z = self.classify_layer(F_E)
+
+        return Z
+
+    def _standard_forward(
+        self,
+        tokens,
         label,
         output_dict
     ):
-        # Embedder first
-        E = self.embedder(augmented_tokens)
+        # Embedded Sentence
+        sentences_embedding = self._encode_sentence(tokens)
 
-        # Word s2s, s2v encoding
-        tokens_mask = get_text_field_mask(augmented_tokens)
+        # Classify sentence (without softmax activation)
+        classify_result = self._classify_sentence(sentences_embedding)
+        classification_loss = self.classification_criterion(classify_result, label)
 
-        E_S = self.s2s_encoder(E, tokens_mask)
-        E_V = self.s2v_encoder(E_S, tokens_mask)
-
-        # Prepare to output
-        F_E = self.feedforward(E_V)
-        Z = self.classification_layer(F_E)
-
-        if label is not None:
-            loss = self.criterion(Z, label)
-            output_dict["loss"] += loss
+        output_dict["classification_loss"] = classification_loss
+        output_dict["predicts"] = torch.argmax(classify_result, dim=1)
 
         return output_dict
+
+    def optimize(
+        self,
+        loss
+    ):
+        loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
 
     @overrides
     def forward(
@@ -383,20 +389,98 @@ class Sentiment_Model(Model):
         tokens,
         label
     ):
-        # Augment sentence
-        actions = self.reinforce.forward(tokens)
-        augmented_tokens = {"tokens": {
-            "tokens": move_to_device(self.augmenter.augment_batch_sentences(actions, tokens), 0)
-        }}
-
-        # Anchor forwarding
-        output_dict = self._anchor_forward(tokens, label)
-        output_dict = self._augment_forward(augmented_tokens, label, output_dict)
+        output_dict = {}
+        output_dict = self._standard_forward(tokens, label, output_dict)
 
         return output_dict
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         return {'accuracy': self.accuracy.get_metric(reset)}
+
+    def _fit_valid(
+        self,
+        valid_data_loader: DataLoader
+    ):
+        num_of_batch = 0
+        total_loss = 0.0
+        total_labels = []
+        total_predicts = []
+
+        for batch_idx, batch in enumerate(valid_data_loader):
+            batch = move_to_device(batch, 0)
+            output_dict = self.forward(batch["tokens"], batch["label"])
+
+            num_of_batch += 1
+            total_labels.append(batch["label"])
+            total_predicts.append(output_dict["predicts"])
+            total_loss += output_dict["classification_loss"].item()
+
+        total_labels = torch.cat(total_labels, 0)
+        total_predicts = torch.cat(total_predicts, 0)
+
+        avg_loss = total_loss / num_of_batch
+        avg_acc = torch.sum(total_labels == total_predicts) / total_labels.shape[0]
+
+        return avg_loss, avg_acc
+
+    def _fit_train(
+        self,
+        train_data_loader: DataLoader
+    ):
+        num_of_batch = 0
+        total_loss = 0.0
+        total_labels = []
+        total_predicts = []
+
+        for batch_idx, batch in enumerate(train_data_loader):
+            batch = move_to_device(batch, 0)
+            output_dict = self.forward(batch["tokens"], batch["label"])
+
+            self._manipulate_requires_grad(True, self.sentence_encoder)
+            self._manipulate_requires_grad(True, self.sentiment_classifier)
+            self.optimize(output_dict["classification_loss"])
+
+            num_of_batch += 1
+            total_labels.append(batch["label"])
+            total_predicts.append(output_dict["predicts"])
+            total_loss += output_dict["classification_loss"].item()
+
+        total_labels = torch.cat(total_labels, 0)
+        total_predicts = torch.cat(total_predicts, 0)
+
+        avg_loss = total_loss / num_of_batch
+        avg_acc = torch.sum(total_labels == total_predicts) / total_labels.shape[0]
+
+        return avg_loss, avg_acc
+
+    def fit(
+        self,
+        epochs: int,
+        train_data_loader: DataLoader,
+        valid_data_loader: DataLoader,
+        test_data_loader: DataLoader = None
+    ):
+        for epoch in range(epochs):
+            # Do training
+            self.train()
+            train_avg_loss, train_avg_acc = self._fit_train(train_data_loader)
+
+            # Do validation
+            self.eval()
+            valid_avg_loss, valid_avg_acc = self._fit_valid(valid_data_loader)
+
+            # Do testing
+            self.eval()
+            test_avg_loss, test_avg_acc = self._fit_valid(test_data_loader)
+
+            print("Epochs         : {}".format(epoch))
+            print("Training Loss  : {:.5f}".format(train_avg_loss))
+            print("Training Acc   : {:.5f}".format(train_avg_acc))
+            print("Validation Loss: {:.5f}".format(valid_avg_loss))
+            print("Validation Acc : {:.5f}".format(valid_avg_acc))
+            print("Testing Loss   : {:.5f}".format(test_avg_loss))
+            print("Testing Acc    : {:.5f}".format(test_avg_acc))
+            print("----------------------------------------------")
 
 
 def get_sst_ds(
@@ -473,17 +557,7 @@ def main():
     if USE_GPU is True:
         gru_sentiment_model = gru_sentiment_model.cuda()
 
-    # Trainer Declarition
-    trainer = GradientDescentTrainer(
-        gru_sentiment_model,
-        optim.Adam(gru_sentiment_model.parameters(), lr=0.00001),
-        train_data_loader,
-        validation_data_loader=valid_data_loader,
-        num_epochs=500
-    )
-
-    # Trainer Train
-    trainer.train()
+    gru_sentiment_model.fit(500, train_data_loader, valid_data_loader, test_data_loader)
 
 
 if __name__ == '__main__':
