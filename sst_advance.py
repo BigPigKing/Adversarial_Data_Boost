@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 import nlpaug.augmenter.word as naw
 
+from tqdm import tqdm
 from typing import Dict, List, Optional, Union
 from overrides import overrides
 from nltk.tree import Tree
@@ -25,7 +26,6 @@ from allennlp.models.model import Model
 from allennlp.nn.util import get_text_field_mask, get_token_ids_from_text_field_tensors
 from allennlp.nn.util import get_lengths_from_binary_sequence_mask, move_to_device
 from allennlp.modules import FeedForward
-from allennlp.training import GradientDescentTrainer
 from allennlp.training.metrics import CategoricalAccuracy
 
 
@@ -167,12 +167,37 @@ class Sentence_Augmenter(object):
         self.vocab = vocab
         self.namespace = namespace
         self.augmenters = [
-            # naw.ContextualWordEmbsAug(model_path="distilbert-base-uncased", action="substitute"),
-            # naw.ContextualWordEmbsAug(model_path="roberta-base", action="substitute"),
-            # naw.ContextualWordEmbsAug(model_path="albert-base-v2", action="substitute"),
-            # naw.SynonymAug(aug_src="wordnet"),
-            # naw.SynonymAug(aug_src="ppdb", model_path="pretrained_weight/ppdb-2.0-m-all"),
-            naw.RandomWordAug(action="swap")
+            naw.ContextualWordEmbsAug(
+                model_path="distilbert-base-uncased",
+                action="substitute",
+                aug_p=0.18,
+                top_k=36,
+                device="cuda"
+            ),
+            naw.ContextualWordEmbsAug(
+                model_path="roberta-base",
+                action="substitute",
+                aug_p=0.18,
+                top_k=36,
+                device="cuda"
+            ),
+            naw.ContextualWordEmbsAug(
+                model_path="albert-base-v2",
+                action="substitute",
+                aug_p=0.18,
+                top_k=36,
+                device="cuda",
+            ),
+            # naw.SynonymAug(
+            #     aug_src="wordnet",
+            #     aug_p=0.18
+            # ),
+            # naw.SynonymAug(
+            #     aug_src="ppdb",
+            #     model_path="pretrained_weight/ppdb-2.0-m-all",
+            #     aug_p=0.18
+            # ),
+            # naw.RandomWordAug(action="swap")
         ]
         self.tokenizer = SpacyTokenizer()
 
@@ -218,7 +243,11 @@ class Sentence_Augmenter(object):
         batch_sentences_with_token_id = []
 
         for sentence in batch_sentences:
-            tokens = self.tokenizer.tokenize(sentence)
+            try:
+                tokens = self.tokenizer.tokenize(sentence.strip())
+            except ValueError:
+                print(sentence)
+
             token_ids = []
 
             for token in tokens:
@@ -254,21 +283,52 @@ class Sentence_Augmenter(object):
             batch_augmented_sentences_with_token_id, batch_first=True
         )
 
-        return batch_augmented_sentences_with_token_id
+        batch_augmented_sentences_with_token_id = move_to_device(batch_augmented_sentences_with_token_id, 0)
+
+        return {"tokens": {"tokens": batch_augmented_sentences_with_token_id}}
+
+
+class Policy_Network(nn.Module):
+    def __init__(self, embedding_dim, num_of_action):
+        super(Policy_Network, self).__init__()
+
+        self.encoder = nn.Linear(embedding_dim, 150)
+        self.dropout = nn.Dropout(p=0.5)
+        self.classifier = nn.Linear(150, num_of_action)
+
+        self.save_log_probs = []
+        self.rewards = []
+
+        self.optimizer = optim.Adam(self.parameters(), lr=1e-2)
+
+    def forward(self, sentences_embedding):
+        E = self.encoder(sentences_embedding)
+        E = self.dropout(E)
+        E = nn.functional.relu(E)
+        action_scores = self.classifier(E)
+
+        return nn.functional.softmax(action_scores, dim=1)
 
 
 class REINFORCE_Model(nn.Module):
     def __init__(
         self,
         num_of_action: int,
-        sentence_encoder: nn.Sequential
+        sentence_encoder: nn.Sequential,
+        augmenter,
+        max_trans: int = 3,
+        threshold: float = 0.7
     ):
         super().__init__()
         self.num_of_action = num_of_action
         self.action_list = list(range(0, num_of_action))
         self.sentence_encoder = sentence_encoder
+        self.policy_network = Policy_Network(sentence_encoder[-1].get_output_dim(), num_of_action)
+        self.max_trans = max_trans
+        self.augmenter = augmenter
+        self.cos = nn.CosineSimilarity()
 
-    def forward(
+    def select_action(
         self,
         batch_sentences_dict: Dict[str, Dict[str, torch.Tensor]]
     ):
@@ -277,6 +337,52 @@ class REINFORCE_Model(nn.Module):
         selected_action_list = random.choices(self.action_list, k=num_of_batch_action)
 
         return selected_action_list
+
+    def _get_constraind_embedding_and_reward(
+        self,
+        batch_sentences_E,
+        augmented_sentences_E,
+        rewards
+    ):
+        checker = rewards > self.threshold
+        checker = checker.view([checker.shape[0], 1])
+
+        constrained_sentences_E = (batch_sentences_E * checker) + (augmented_sentences_E * (~checker))
+        constrained_rewards = rewards * (~checker)
+
+        return constrained_sentences_E, constrained_rewards
+
+    def env_step(
+        self,
+        batch_sentences,
+        actions
+    ):
+        augmented_sentences = self.augmenter.augment_batch_sentences(actions, batch_sentences)
+
+        batch_sentences_E = self.sentence_encoder(batch_sentences)
+        augmented_sentences_E = self.sentence_encoder(augmented_sentences)
+
+        rewards = 1.0 - self.cos(batch_sentences_E, augmented_sentences_E)
+
+        constrained_sentences_E, constrained_rewards = self._get_constraind_embedding_and_reward(
+            batch_sentences_E, augmented_sentences_E, rewards
+        )
+
+        return constrained_sentences_E, rewards
+
+    def rl_train(
+        self,
+        episodes: int,
+        train_data_loader
+    ):
+        for i_episode in range(episodes):
+            for t in range(self.max_trans):
+                for batch in enumerate(train_data_loader):
+                    # actions = self.select_action(batch)
+                    # states, rewards = self.env_step()
+                    pass
+
+        return False
 
 
 @Model.register("sentiment_classifier")
@@ -317,12 +423,22 @@ class Sentiment_Model(Model):
         # Model Reinforcement
         self.reinforcer = REINFORCE_Model(
             self.augmenter.get_num_of_augment_action(),
-            self.sentence_encoder
+            self.sentence_encoder,
+            self.augmenter
         )
 
         # Loss initiailization
         self.classification_criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.Adam(self.parameters(), lr=0.00001)
+        self.contrastive_criterion = nn.CosineEmbeddingLoss()
+
+        self.sentence_encoder_optimizer = optim.Adam(
+            self.sentence_encoder.parameters(),
+            lr=0.0003
+        )
+        self.sentiment_classifier_optimizer = optim.Adam(
+            self.sentiment_classifier.parameters(),
+            lr=0.0006
+        )
         self.accuracy = CategoricalAccuracy()
 
     def _manipulate_requires_grad(
@@ -357,14 +473,68 @@ class Sentiment_Model(Model):
 
         return Z
 
-    def _standard_forward(
+    def _contrasive_forward(
         self,
-        tokens,
+        sentences_embedding,
+        aug_sentences_embedding,
         label,
         output_dict
     ):
-        # Embedded Sentence
-        sentences_embedding = self._encode_sentence(tokens)
+        # Set Gradient Map
+        self._manipulate_requires_grad(
+            True, self.sentence_encoder
+        )
+        self._manipulate_requires_grad(
+            False, self.sentiment_classifier
+        )
+
+        ones = torch.ones_like(label)
+
+        output_dict["contrastive_loss"] = self.contrastive_criterion(
+            sentences_embedding,
+            aug_sentences_embedding,
+            ones
+        )
+
+        return output_dict
+
+    def _augmented_forward(
+        self,
+        aug_sentences_embedding,
+        label,
+        output_dict
+    ):
+        # Set gradient map
+        self._manipulate_requires_grad(
+            True, self.sentence_encoder
+        )
+
+        self._manipulate_requires_grad(
+            True, self.sentiment_classifier
+        )
+
+        # Classify sentence (without softmax activation)
+        classify_result = self._classify_sentence(aug_sentences_embedding)
+        classification_loss = self.classification_criterion(classify_result, label)
+
+        output_dict["aug_classification_loss"] = classification_loss
+
+        return output_dict
+
+    def _standard_forward(
+        self,
+        sentences_embedding,
+        label,
+        output_dict
+    ):
+        # Set gradient map
+        self._manipulate_requires_grad(
+            True, self.sentence_encoder
+        )
+
+        self._manipulate_requires_grad(
+            True, self.sentiment_classifier
+        )
 
         # Classify sentence (without softmax activation)
         classify_result = self._classify_sentence(sentences_embedding)
@@ -377,11 +547,13 @@ class Sentiment_Model(Model):
 
     def optimize(
         self,
-        loss
+        loss,
+        optimizers,
     ):
         loss.backward()
-        self.optimizer.step()
-        self.optimizer.zero_grad()
+        for optimizer in optimizers:
+            optimizer.step()
+            optimizer.zero_grad()
 
     @overrides
     def forward(
@@ -390,7 +562,42 @@ class Sentiment_Model(Model):
         label
     ):
         output_dict = {}
-        output_dict = self._standard_forward(tokens, label, output_dict)
+
+        # Get sentences embedding
+        sentences_embedding = self._encode_sentence(tokens)
+
+        # Get augmented sentences embedding
+        actions = self.reinforcer.select_action(tokens)
+        augmented_tokens = self.augmenter.augment_batch_sentences(actions, tokens)
+        self._manipulate_requires_grad(
+            False,
+            self.sentence_encoder
+        )
+        aug_sentences_embedding = self._encode_sentence(augmented_tokens)
+
+        # Standard Loss
+        output_dict = self._standard_forward(sentences_embedding, label, output_dict)
+
+        # Augmented Loss
+        output_dict = self._augmented_forward(aug_sentences_embedding, label, output_dict)
+
+        # Contrastive Loss
+        output_dict = self._contrasive_forward(sentences_embedding, aug_sentences_embedding, label, output_dict)
+
+        return output_dict
+
+    def valid_forward(
+        self,
+        tokens,
+        label
+    ):
+        output_dict = {}
+
+        # Get sentences embedding
+        sentences_embedding = self._encode_sentence(tokens)
+
+        # Standard Loss
+        output_dict = self._standard_forward(sentences_embedding, label, output_dict)
 
         return output_dict
 
@@ -408,7 +615,7 @@ class Sentiment_Model(Model):
 
         for batch_idx, batch in enumerate(valid_data_loader):
             batch = move_to_device(batch, 0)
-            output_dict = self.forward(batch["tokens"], batch["label"])
+            output_dict = self.valid_forward(batch["tokens"], batch["label"])
 
             num_of_batch += 1
             total_labels.append(batch["label"])
@@ -432,13 +639,15 @@ class Sentiment_Model(Model):
         total_labels = []
         total_predicts = []
 
-        for batch_idx, batch in enumerate(train_data_loader):
+        for batch_idx, batch in enumerate(tqdm(train_data_loader)):
             batch = move_to_device(batch, 0)
             output_dict = self.forward(batch["tokens"], batch["label"])
 
-            self._manipulate_requires_grad(True, self.sentence_encoder)
-            self._manipulate_requires_grad(True, self.sentiment_classifier)
-            self.optimize(output_dict["classification_loss"])
+            # Optimize
+            self.optimize(
+                output_dict["classification_loss"] + output_dict["aug_classification_loss"] + output_dict["contrastive_loss"],
+                [self.sentiment_classifier_optimizer, self.sentence_encoder_optimizer]
+            )
 
             num_of_batch += 1
             total_labels.append(batch["label"])
@@ -460,7 +669,7 @@ class Sentiment_Model(Model):
         valid_data_loader: DataLoader,
         test_data_loader: DataLoader = None
     ):
-        for epoch in range(epochs):
+        for epoch in tqdm(range(epochs)):
             # Do training
             self.train()
             train_avg_loss, train_avg_acc = self._fit_train(train_data_loader)
@@ -514,10 +723,10 @@ def main():
 
     # Embedder declartion
     glove_embedding = Embedding(
-        embedding_dim=200,
+        embedding_dim=300,
         vocab=vocab,
         padding_index=0,
-        pretrained_file="pretrained_weight/glove.6B.200d.txt"
+        pretrained_file="pretrained_weight/glove.6B.300d.txt"
     )
     embedder = BasicTextFieldEmbedder(token_embedders={"tokens": glove_embedding})
 
@@ -525,13 +734,13 @@ def main():
     s2s_encoder = GruSeq2SeqEncoder(
         input_size=embedder.get_output_dim(),
         hidden_size=300,
-        num_layers=2,
+        num_layers=3,
         bidirectional=True
     )
     s2v_encoder = GruSeq2VecEncoder(
         input_size=s2s_encoder.get_output_dim(),
         hidden_size=300,
-        num_layers=2,
+        num_layers=3,
         bidirectional=True
     )
 
