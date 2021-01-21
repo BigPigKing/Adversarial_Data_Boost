@@ -188,15 +188,15 @@ class Sentence_Augmenter(object):
                 top_k=36,
                 device="cuda",
             ),
-            # naw.SynonymAug(
-            #     aug_src="wordnet",
-            #     aug_p=0.18
-            # ),
-            # naw.SynonymAug(
-            #     aug_src="ppdb",
-            #     model_path="pretrained_weight/ppdb-2.0-m-all",
-            #     aug_p=0.18
-            # ),
+            naw.SynonymAug(
+                aug_src="wordnet",
+                aug_p=0.18
+            ),
+            naw.SynonymAug(
+                aug_src="ppdb",
+                model_path="pretrained_weight/ppdb-2.0-m-all",
+                aug_p=0.18
+            ),
             # naw.RandomWordAug(action="swap")
         ]
         self.tokenizer = SpacyTokenizer()
@@ -433,11 +433,11 @@ class Sentiment_Model(Model):
 
         self.sentence_encoder_optimizer = optim.Adam(
             self.sentence_encoder.parameters(),
-            lr=0.0003
+            lr=0.00001
         )
         self.sentiment_classifier_optimizer = optim.Adam(
             self.sentiment_classifier.parameters(),
-            lr=0.0006
+            lr=0.00002
         )
         self.accuracy = CategoricalAccuracy()
 
@@ -480,14 +480,6 @@ class Sentiment_Model(Model):
         label,
         output_dict
     ):
-        # Set Gradient Map
-        self._manipulate_requires_grad(
-            True, self.sentence_encoder
-        )
-        self._manipulate_requires_grad(
-            False, self.sentiment_classifier
-        )
-
         ones = torch.ones_like(label)
 
         output_dict["contrastive_loss"] = self.contrastive_criterion(
@@ -504,15 +496,6 @@ class Sentiment_Model(Model):
         label,
         output_dict
     ):
-        # Set gradient map
-        self._manipulate_requires_grad(
-            True, self.sentence_encoder
-        )
-
-        self._manipulate_requires_grad(
-            True, self.sentiment_classifier
-        )
-
         # Classify sentence (without softmax activation)
         classify_result = self._classify_sentence(aug_sentences_embedding)
         classification_loss = self.classification_criterion(classify_result, label)
@@ -527,15 +510,6 @@ class Sentiment_Model(Model):
         label,
         output_dict
     ):
-        # Set gradient map
-        self._manipulate_requires_grad(
-            True, self.sentence_encoder
-        )
-
-        self._manipulate_requires_grad(
-            True, self.sentiment_classifier
-        )
-
         # Classify sentence (without softmax activation)
         classify_result = self._classify_sentence(sentences_embedding)
         classification_loss = self.classification_criterion(classify_result, label)
@@ -563,25 +537,45 @@ class Sentiment_Model(Model):
     ):
         output_dict = {}
 
-        # Get sentences embedding
-        sentences_embedding = self._encode_sentence(tokens)
-
-        # Get augmented sentences embedding
-        actions = self.reinforcer.select_action(tokens)
-        augmented_tokens = self.augmenter.augment_batch_sentences(actions, tokens)
+        # Get augmented sentences action
         self._manipulate_requires_grad(
             False,
             self.sentence_encoder
         )
-        aug_sentences_embedding = self._encode_sentence(augmented_tokens)
+        actions = self.reinforcer.select_action(tokens)
+        augmented_tokens = self.augmenter.augment_batch_sentences(actions, tokens)
 
         # Standard Loss
+        self._manipulate_requires_grad(
+            True,
+            self.sentence_encoder
+        )
+        self._manipulate_requires_grad(
+            True,
+            self.sentiment_classifier
+        )
+        sentences_embedding = self._encode_sentence(tokens)
         output_dict = self._standard_forward(sentences_embedding, label, output_dict)
 
         # Augmented Loss
+        self._manipulate_requires_grad(
+            False,
+            self.sentence_encoder
+        )
+        self._manipulate_requires_grad(
+            True,
+            self.sentiment_classifier
+        )
+        aug_sentences_embedding = self._encode_sentence(augmented_tokens)
         output_dict = self._augmented_forward(aug_sentences_embedding, label, output_dict)
 
         # Contrastive Loss
+        self._manipulate_requires_grad(
+            True,
+            self.sentence_encoder
+        )
+        sentences_embedding = self._encode_sentence(tokens)
+        aug_sentences_embedding = self._encode_sentence(augmented_tokens)
         output_dict = self._contrasive_forward(sentences_embedding, aug_sentences_embedding, label, output_dict)
 
         return output_dict
@@ -645,7 +639,9 @@ class Sentiment_Model(Model):
 
             # Optimize
             self.optimize(
-                output_dict["classification_loss"] + output_dict["aug_classification_loss"] + output_dict["contrastive_loss"],
+                output_dict["classification_loss"] * 1 +
+                output_dict["aug_classification_loss"] * 1 +
+                output_dict["contrastive_loss"] * 1,
                 [self.sentiment_classifier_optimizer, self.sentence_encoder_optimizer]
             )
 
@@ -697,7 +693,7 @@ def get_sst_ds(
     valid_data_path="data/sst/dev.txt",
     test_data_path="data/sst/test.txt"
 ):
-    sst_dataset_reader = StanfordSentimentTreeBankDatasetReader()
+    sst_dataset_reader = StanfordSentimentTreeBankDatasetReader(granularity="2-class")
     train_ds = sst_dataset_reader.read(train_data_path)
     valid_ds = sst_dataset_reader.read(valid_data_path)
     test_ds = sst_dataset_reader.read(test_data_path)
