@@ -1,5 +1,6 @@
 import torch
 
+from .reinforcer import REINFORCER
 from typing import Dict
 from overrides import overrides
 from allennlp.data.vocabulary import Vocabulary
@@ -14,8 +15,9 @@ class SentimentModel(torch.nn.Module):
         embedder: torch.nn.Module,
         encoder: torch.nn.ModuleList,
         classifier: torch.nn.ModuleList,
+        reinforcer: REINFORCER,
         optimizer: torch.optim = torch.optim.Adam,
-        scheduler: torch.optim.lr_scheduler = None
+        scheduler: torch.optim.lr_scheduler = None,
     ):
         super(SentimentModel, self).__init__()
         # Model Augmenter
@@ -45,6 +47,9 @@ class SentimentModel(torch.nn.Module):
         # Evaluate initialization
         self.accuracy = CategoricalAccuracy()
 
+        # Reinforcer initialization
+        self.reinforcer = reinforcer
+
     @overrides
     def forward(
         self,
@@ -52,6 +57,8 @@ class SentimentModel(torch.nn.Module):
         label_Y,
     ) -> Dict:
         output_dict = {}
+        # Augmented
+        self.reinforcer.augment_batch(token_X)
 
         # Embedded first
         embed_X = self.embedder(token_X)
