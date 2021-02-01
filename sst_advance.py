@@ -7,6 +7,8 @@ from lib.encoder import TextEncoder
 from lib.classifier import TextClassifier
 from lib.model import SentimentModel
 from lib.trainer import TextTrainer
+from lib.augmenter import DeleteAugmenter
+from lib.reinforcer import REINFORCER
 
 from torch.utils.data import DataLoader
 from allennlp.data import allennlp_collate
@@ -54,12 +56,23 @@ def main():
     # Schedular declartion
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau
 
+    # Augmenter declartion
+    augmenter = DeleteAugmenter(0)
+
+    # Reinforcer declation
+    reinforcer = REINFORCER(
+        embedder,
+        encoder,
+        [augmenter]
+    )
+
     # Model declartion
     sentiment_model = SentimentModel(
         vocab,
         embedder,
         encoder,
         classifier,
+        reinforcer,
     )
 
     # Model move to gpu
