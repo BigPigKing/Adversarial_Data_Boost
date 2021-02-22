@@ -1,10 +1,47 @@
+import abc
 import torch
 
 from tqdm import tqdm
+from overrides import overrides
 from allennlp.nn.util import move_to_device
 
 
-class TextTrainer(object):
+class Trainer(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def fit(
+        self
+    ):
+        return NotImplemented
+
+
+class ReinforceTrainer(Trainer):
+    def __init__(
+        self,
+        train_model: torch.nn.Module,
+        max_augment: int
+    ):
+        super(TextTrainer, self).__init__()
+        self.train_model = train_model
+        self.max_augment = max_augment
+
+    def _fit_epoch(
+        data_loader: torch.utils.data.DataLoader
+    ):
+        for episode_idx, episode in enumerate(data_loader):
+            for augment_idx in range(self.max_augment):
+                action
+
+
+    def fit(
+        self,
+        epochs: int,
+        data_loader: torch.utils.data.DataLoader
+    ):
+        for epoch in tqdm(range(epochs)):
+            self._fit_epoch(data_loader)
+
+
+class TextTrainer(Trainer):
     def __init__(
         self,
         train_model: torch.nn.Module
@@ -70,6 +107,7 @@ class TextTrainer(object):
 
         return avg_loss, avg_acc
 
+    @overrides
     def fit(
         self,
         epochs: int,

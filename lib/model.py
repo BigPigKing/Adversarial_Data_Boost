@@ -57,8 +57,6 @@ class SentimentModel(torch.nn.Module):
         label_Y,
     ) -> Dict:
         output_dict = {}
-        # Augmented
-        self.reinforcer.augment_batch(token_X)
 
         # Embedded first
         embed_X = self.embedder(token_X)

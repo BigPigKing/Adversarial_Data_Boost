@@ -63,6 +63,7 @@ def main():
     reinforcer = REINFORCER(
         embedder,
         encoder,
+        classifier,
         [augmenter]
     )
 
