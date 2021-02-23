@@ -17,20 +17,20 @@ class Trainer(metaclass=abc.ABCMeta):
 class ReinforceTrainer(Trainer):
     def __init__(
         self,
-        train_model: torch.nn.Module,
-        max_augment: int
+        train_model: torch.nn.Module
     ):
-        super(TextTrainer, self).__init__()
+        super(ReinforceTrainer, self).__init__()
         self.train_model = train_model
-        self.max_augment = max_augment
 
     def _fit_epoch(
+        self,
         data_loader: torch.utils.data.DataLoader
     ):
-        for episode_idx, episode in enumerate(data_loader):
-            for augment_idx in range(self.max_augment):
-                action
+        for episode_idx, episode in tqdm(enumerate(data_loader)):
+            episode = move_to_device(episode, 0)
+            output_dict = self.train_model.forward(episode["tokens"])
 
+            self.train_model.optimize(output_dict["loss"])
 
     def fit(
         self,
@@ -38,6 +38,7 @@ class ReinforceTrainer(Trainer):
         data_loader: torch.utils.data.DataLoader
     ):
         for epoch in tqdm(range(epochs)):
+            self.train_model.train()
             self._fit_epoch(data_loader)
 
 

@@ -30,14 +30,8 @@ class DeleteAugmenter(Augmenter):
     def augment(
         self,
         ids_dict: Dict[str, Dict[str, torch.Tensor]],
-        prob: float
     ):
-        token_ids = get_token_ids_from_text_field_tensors(ids_dict)
-
-        # Every token_id means a sentence based token id list
-        # token_ids mean all the sentences in the batch
-        for token_id in token_ids:
-            non_padded_token_id = token_id[token_id != self.padded_idx]
+        return ids_dict
 
 
 def main():

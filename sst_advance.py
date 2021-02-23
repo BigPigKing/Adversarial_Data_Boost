@@ -6,7 +6,7 @@ from lib.embedder import TextEmbedder
 from lib.encoder import TextEncoder
 from lib.classifier import TextClassifier
 from lib.model import SentimentModel
-from lib.trainer import TextTrainer
+from lib.trainer import TextTrainer, ReinforceTrainer
 from lib.augmenter import DeleteAugmenter
 from lib.reinforcer import REINFORCER
 
@@ -58,13 +58,14 @@ def main():
 
     # Augmenter declartion
     augmenter = DeleteAugmenter(0)
+    augmenter_two = DeleteAugmenter(0)
 
     # Reinforcer declation
     reinforcer = REINFORCER(
         embedder,
         encoder,
         classifier,
-        [augmenter]
+        [augmenter, augmenter_two]
     )
 
     # Model declartion
@@ -81,9 +82,13 @@ def main():
         sentiment_model = sentiment_model.cuda()
 
     # Trainer declartion
-    trainer = TextTrainer(sentiment_model)
+    text_trainer = TextTrainer(sentiment_model)
 
-    trainer.fit(500, train_data_loader, valid_data_loader, test_data_loader)
+    text_trainer.fit(1, train_data_loader, valid_data_loader, test_data_loader)
+
+    train_data_loader = DataLoader(train_ds, batch_size=1, shuffle=True, collate_fn=allennlp_collate)
+    reinforce_trainer = ReinforceTrainer(reinforcer)
+    reinforce_trainer.fit(20, train_data_loader)
 
 
 if __name__ == '__main__':

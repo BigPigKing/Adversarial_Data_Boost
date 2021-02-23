@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 from overrides import overrides
 from typing import List, Dict
@@ -38,48 +39,48 @@ class Environment(object):
     ):
         return self.current_state
 
-    def get_encoded_state_from_token_of_sent(
+    def get_encoded_state(
         self,
-        wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]]
+        state: Dict[str, Dict[str, torch.Tensor]]
     ):
         # Embedded first
-        embedded_sent = self.embedder(wrapped_token_of_sent)
+        embedded_state = self.embedder(state)
 
         # get token mask
-        sent_mask = get_text_field_mask(wrapped_token_of_sent)
+        state_mask = get_text_field_mask(state)
 
         # Encode
-        encoded_sent_state = self.encoder(embedded_sent.detach(), sent_mask)
+        encoded_state = self.encoder(embedded_state, state_mask)
 
-        return encoded_sent_state
+        return encoded_state
 
     def reset(
         self,
         wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]]
     ):
         self.initial_state = wrapped_token_of_sent
-        self.encoded_initial_state = self.get_encoded_state_from_token_of_sent(self.initial_state)
-        self.initial_prediction = self.classifier(self.encoded_initial_state.detach())
+        self.encoded_initial_state = self.get_encoded_state(self.initial_state)
+        self.initial_prediction = self.classifier(self.encoded_initial_state)
         self.current_state = wrapped_token_of_sent
 
-        return wrapped_token_of_sent
+        return self.initial_state
 
     def _get_env_respond(
         self,
-        augmented_sent: Dict[str, Dict[str, torch.Tensor]]
+        augmented_state: Dict[str, Dict[str, torch.Tensor]]
     ):
         done = False
 
         # Get encoded augmented sentence embedding for similarity calculation preparation
-        encoded_augmented_state = self.get_encoded_state_from_token_of_sent(augmented_sent)
+        encoded_augmented_state = self.get_encoded_state(augmented_state)
 
         # Calculate Reward
-        if self.cos_similarity(self.encoded_initial_state, self.encoded_augmented_state) < self.similarity_threshold:
+        if self.cos_similarity(self.encoded_initial_state, encoded_augmented_state) < self.similarity_threshold:
             done = True
             reward = -1.00
         else:
-            augmented_prediction = self.classifier(encoded_augmented_state.detach())
-            reward = self.mse_loss_reward(self.initial_prediction, augmented_prediction).item()
+            augmented_prediction = self.classifier(encoded_augmented_state)
+            reward = self.mse_loss_reward(self.initial_prediction.detach(), augmented_prediction.detach()).item()
 
         return reward, done
 
@@ -95,11 +96,11 @@ class Environment(object):
             done = True
             reward = 0.0
         else:
-            augmented_sent = self.augmenter_list[action].augment(self.current_state)
-            reward, done = self._get_env_respond(augmented_sent)
+            augmented_state = self.augmenter_list[action].augment(self.current_state)
+            reward, done = self._get_env_respond(augmented_state)
 
             # move to next state
-            self.current_state = augmented_sent
+            self.current_state = augmented_state
 
         return self.current_state, reward, done
 
@@ -107,10 +108,15 @@ class Environment(object):
 class Policy(torch.nn.Module):
     def __init__(
         self,
+        embedder: torch.nn.Module,
+        encoder: torch.nn.Module,
         input_dim: int,
         num_of_action: int
     ):
         super(Policy, self).__init__()
+
+        self.embedder = embedder
+        self.encoder = encoder
 
         self.feedforward = FeedForward(
             input_dim,
@@ -118,17 +124,39 @@ class Policy(torch.nn.Module):
             [64, 32, num_of_action],
             torch.nn.ReLU()
         )
-
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+
+    def select_action(
+        self,
+        state: Dict[str, Dict[str, torch.Tensor]]
+    ):
+        action, action_probs = self(state)
+
+        return action, action_probs
 
     @overrides
     def forward(
         self,
-        encoded_sent_state: torch.Tensor
+        state: Dict[str, Dict[str, torch.Tensor]]
     ):
-        action_scores = self.feedforward(encoded_sent_state)
+        # Embedded first
+        embedded_state = self.embedder(state)
 
-        return torch.nn.functional.softmax(action_scores, dim=1)
+        # get token mask
+        state_mask = get_text_field_mask(state)
+
+        # Encode
+        encoded_state = self.encoder(embedded_state, state_mask)
+
+        # Get action probs
+        action_scores = self.feedforward(encoded_state.detach())
+        action_probs = torch.nn.functional.softmax(action_scores, dim=1)
+
+        # Get action
+        m = torch.distributions.Categorical(action_probs)
+        action = m.sample()
+
+        return action.item(), action_probs
 
 
 class REINFORCER(torch.nn.Module):
@@ -144,6 +172,8 @@ class REINFORCER(torch.nn.Module):
         super(REINFORCER, self).__init__()
 
         self.policy = Policy(
+            embedder,
+            encoder,
             encoder.get_output_dim(),
             len(augmenter_list)
         )
@@ -172,27 +202,38 @@ class REINFORCER(torch.nn.Module):
     ):
         wrapped_token_of_sent = torch.stack([token_of_sent])
 
-        print(wrapped_token_of_sent)
-        print(wrapped_token_of_sent.shape)
-
         return {"tokens": {"tokens": wrapped_token_of_sent}}
 
     def _calculate_loss(
         self,
-        entropies,
         log_probs,
         rewards
     ):
-        R = torch.zeros(1, 1)
-        loss = 0.0
+        R = 0.0
+        losses = []
+        returns = []
 
-        for i in reversed(range(len(rewards))):
-            R = self.gamma * R + rewards[i]
-            loss = loss - (log_probs[i]*(torch.autograd.Variable(R).expand_as(log_probs[i])).cuda()).sum() - (0.0001*entropies[i].cuda()).sum()
+        for r in rewards[::-1]:
+            R = r + self.gamma * R
+            returns.insert(0, R)
 
-        loss = loss / len(rewards)
+        returns = torch.tensor(returns)
+        returns = (returns - returns.mean()) / (returns.std() + np.finfo(np.float32).eps.item())
+
+        for log_prob, R in zip(log_probs, returns):
+            losses.append(-log_prob * R)
+
+        loss = torch.cat(losses).sum()
 
         return loss
+
+    def optimize(
+        self,
+        loss
+    ):
+        loss.backward()
+        self.policy.optimizer.step()
+        self.policy.optimizer.zero_grad()
 
     @overrides
     def forward(
@@ -205,15 +246,13 @@ class REINFORCER(torch.nn.Module):
         output_dict = {}
 
         state = self.env.reset(wrapped_token_of_sent)
-        entropies = []
         log_probs = []
         rewards = []
 
-        for step in self.max_step:
-            action, action_log_prob, action_entropy = self.policy.select_action(state)
+        for step in range(self.max_step):
+            action, action_log_prob = self.policy.select_action(state)
             state, reward, done = self.env.step(action)
 
-            entropies.append(action_entropy)
             log_probs.append(action_log_prob)
             rewards.append(reward)
 
@@ -221,7 +260,7 @@ class REINFORCER(torch.nn.Module):
                 break
 
         # calculate loss
-        loss = self._calculate_loss(entropies, log_probs, rewards)
+        loss = self._calculate_loss(log_probs, rewards)
 
         # Prepare output dict
         output_dict["loss"] = loss
