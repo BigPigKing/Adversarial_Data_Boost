@@ -84,11 +84,11 @@ def main():
     # Trainer declartion
     text_trainer = TextTrainer(sentiment_model)
 
-    text_trainer.fit(1, train_data_loader, valid_data_loader, test_data_loader)
+    # text_trainer.fit(1, train_data_loader, valid_data_loader, test_data_loader)
 
     train_data_loader = DataLoader(train_ds, batch_size=1, shuffle=True, collate_fn=allennlp_collate)
-    reinforce_trainer = ReinforceTrainer(reinforcer)
-    reinforce_trainer.fit(20, train_data_loader)
+    # reinforce_trainer = ReinforceTrainer(reinforcer)
+    # reinforce_trainer.fit(20, train_data_loader)
 
 
 if __name__ == '__main__':
