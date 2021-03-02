@@ -6,95 +6,199 @@ import random
 from .utils import pad_text_tensor_list, unpad_text_field_tensors
 from typing import Dict
 from overrides import overrides
+from nltk.corpus import wordnet
+from allennlp.data import Vocabulary
 
 
 class Augmenter(metaclass=abc.ABCMeta):
     def __init__(
         self,
+        padded_idx: int = 0
     ):
-        pass
+        self.padded_idx = padded_idx
 
     @abc.abstractmethod
-    def augment(
-        self
+    def _augment(
+        self,
+        text_tensor: torch.Tensor
     ):
         return NotImplemented
+
+    def augment(
+        self,
+        text_field_tensors: Dict[str, Dict[str, torch.Tensor]]
+    ):
+        augment_text_tensor_list = []
+        text_tensor_list = unpad_text_field_tensors(text_field_tensors)
+
+        for text_tensor in text_tensor_list:
+            augment_text_tensor = self._augment(text_tensor)
+            augment_text_tensor_list.append(augment_text_tensor)
+
+        return pad_text_tensor_list(augment_text_tensor_list)
 
 
 class DeleteAugmenter(Augmenter):
     def __init__(
         self,
-        padded_idx: int,
+        padded_idx: int = 0,
+        magnitude: float = 0.2
     ):
-        self.padded_idx = padded_idx
+        super(DeleteAugmenter, self).__init__(padded_idx=padded_idx)
+        self.magnitude = magnitude
 
     @overrides
-    def augment(
+    def _augment(
         self,
-        text_field_tensors: Dict[str, Dict[str, torch.Tensor]],
-        proportion: float = 0.1
-    ):
-        augment_text_tensor_list = []
-        text_tensor_list = unpad_text_field_tensors(text_field_tensors)
+        text_tensor: torch.Tensor
+    ) -> torch.Tensor:
+        if len(text_tensor) == 1:
+            return text_tensor.detach().clone()
+        else:
+            # Get delete word information
+            num_of_del_word = math.floor(len(text_tensor) * self.magnitude)
+            del_word_idxs = random.sample(range(len(text_tensor)), num_of_del_word)
+            del_word_idxs.sort()
+            text_list = text_tensor.tolist()
 
-        for text_tensor in text_tensor_list:
-            if len(text_tensor) == 1:
-                augment_text_tensor_list.append(text_tensor.detach().clone())
-            else:
-                # Get delete word information
-                num_of_del_word = math.floor(len(text_tensor) * proportion)
-                del_word_idxs = random.sample(range(0, len(text_tensor - 1)), num_of_del_word)
+            # Loop to delete word
+            for del_word_idx in reversed(del_word_idxs):
+                del text_list[del_word_idx]
 
-                # Loop to delete word
-                augment_text_tensor = text_tensor.detach().clone()
-                for del_word_idx in del_word_idxs:
-                    augment_text_tensor[del_word_idx] = self.padded_idx
-
-                augment_text_tensor_list.append(augment_text_tensor)
-
-        return pad_text_tensor_list(augment_text_tensor_list)
+            return torch.tensor(text_list).to(text_tensor.get_device())
 
 
 class SwapAugmenter(Augmenter):
     def __init__(
-        self
+        self,
+        padded_idx: int = 0,
+        magnitude: int = 1
     ):
-        return
+        super(SwapAugmenter, self).__init__(padded_idx=padded_idx)
+        self.magnitude = magnitude
 
-    def _swap(
+    @overrides
+    def _augment(
         self,
         text_tensor: torch.Tensor
     ) -> torch.Tensor:
+        # Prepare tensor for augmentation
         augment_text_tensor = text_tensor.detach().clone()
-        first_idx, second_idx = random.sample(range(len(text_tensor)), 2)
 
-        temp = augment_text_tensor[first_idx].clone()
-        augment_text_tensor[first_idx] = augment_text_tensor[second_idx]
-        augment_text_tensor[second_idx] = temp
+        if len(text_tensor) == 1:
+            return augment_text_tensor
+        else:
+            # Sample swap index
+            first_idx, second_idx = random.sample(range(len(augment_text_tensor)), 2)
 
-        return text_tensor
+            temp = augment_text_tensor[first_idx].clone()
+            augment_text_tensor[first_idx] = augment_text_tensor[second_idx]
+            augment_text_tensor[second_idx] = temp
 
-    @overrides
-    def augment(
-        self,
-        text_field_tensors: Dict[str, Dict[str, torch.Tensor]],
-        num_of_augmentation: int = 1
-    ):
-        augment_text_tensor_list = []
-        text_tensor_list = unpad_text_field_tensors(text_field_tensors)
-
-        for text_tensor in text_tensor_list:
-            if len(text_tensor) == 1:
-                augment_text_tensor_list.append(text_tensor.detach().clone())
-            else:
-                augment_text_tensor_list.append(self._swap(text_tensor))
-
-        return pad_text_tensor_list(augment_text_tensor_list)
+        return augment_text_tensor
 
 
 class ReplaceAugmenter(Augmenter):
-    def __init__():
-        pass
+    def __init__(
+        self,
+        vocab: Vocabulary,
+        padded_idx: int = 0,
+        magnitude: int = 1,
+    ):
+        super(ReplaceAugmenter, self).__init__(padded_idx=padded_idx)
+        self.magnitude = magnitude
+        self.vocab = vocab
+
+    def _get_synomym_tokens(
+        self,
+        token: str
+    ):
+        synomyms = set()
+
+        for syn in wordnet.synsets(token):
+            for synonym_lemma in syn.lemmas():
+                synonym = synonym_lemma.name().replace('_', ' ').replace('-', ' ').lower()
+                synonym = "".join([char for char in synonym if char in ' qwertyuiopasdfghjklzxcvbnm'])
+                synomyms.add(synonym)
+
+        synomyms = list(synomyms)
+
+        if token in synomyms:
+            return synomyms.remove(token)
+        else:
+            return synomyms
+
+    def _get_synomym_token_idxs(
+        self,
+        token_id: int
+    ):
+        token = self.vocab.get_token_from_index(token_id)
+        synomym_tokens = self._get_synomym_tokens(token)
+
+        if synomym_tokens:
+            return self.vocab.add_tokens_to_namespace(synomym_tokens)
+        else:
+            return []
+
+    @overrides
+    def _augment(
+        self,
+        text_tensor: torch.Tensor
+    ):
+        augment_text_tensor = text_tensor.detach().clone()
+        replace_idx = random.sample(range(len(augment_text_tensor)), 1)[0]
+
+        synomym_token_idxs = self._get_synomym_token_idxs(augment_text_tensor[replace_idx].item())
+
+        if synomym_token_idxs:
+            augment_text_tensor[replace_idx] = random.choice(synomym_token_idxs)
+        else:
+            pass
+
+        return augment_text_tensor
+
+
+class InsertAugmenter(ReplaceAugmenter):
+    def __init__(
+        self,
+        vocab: Vocabulary,
+        padded_idx: int = 0,
+        magnitude: int = 1
+    ):
+        super(InsertAugmenter, self).__init__(padded_idx=padded_idx, vocab=vocab, magnitude=magnitude)
+
+    @overrides
+    def _augment(
+        self,
+        text_tensor: torch.tensor
+    ):
+        text_list = text_tensor.tolist()
+
+        replace_idx = random.sample(range(len(text_list)), 1)[0]
+
+        synomym_token_idxs = super(InsertAugmenter, self)._get_synomym_token_idxs(text_list[replace_idx])
+
+        if synomym_token_idxs:
+            text_list.insert(random.choice(synomym_token_idxs), replace_idx)
+        else:
+            pass
+
+        return torch.tensor(text_list).to(text_tensor.get_device())
+
+
+class IdentityAugmenter(Augmenter):
+    def __init__(
+        self,
+        padded_idx: int = 0
+    ):
+        super(IdentityAugmenter, self).__init__(padded_idx=padded_idx)
+
+    @overrides
+    def _augment(
+        self,
+        text_field_tensors: Dict[str, Dict[str, torch.Tensor]]
+    ):
+        return text_field_tensors
 
 
 def main():

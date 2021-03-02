@@ -4,6 +4,7 @@ import numpy as np
 from overrides import overrides
 from typing import List, Dict
 from .augmenter import Augmenter
+from allennlp.data import Vocabulary
 from allennlp.nn.util import get_token_ids_from_text_field_tensors, get_text_field_mask
 from allennlp.modules.feedforward import FeedForward
 
@@ -80,7 +81,8 @@ class Environment(object):
             reward = -1.00
         else:
             augmented_prediction = self.classifier(encoded_augmented_state)
-            reward = self.mse_loss_reward(self.initial_prediction.detach(), augmented_prediction.detach()).item()
+            reward = -np.log(self.mse_loss_reward(self.initial_prediction.detach(), augmented_prediction.detach()).item())
+            reward = np.clip(reward, 0, 5)
 
         return reward, done
 
@@ -94,7 +96,7 @@ class Environment(object):
         # Last action will be "stop"
         if action == len(self.augmenter_list) - 1:
             done = True
-            reward = 0.0
+            reward = 1.0
         else:
             augmented_state = self.augmenter_list[action].augment(self.current_state)
             reward, done = self._get_env_respond(augmented_state)
@@ -124,7 +126,7 @@ class Policy(torch.nn.Module):
             [64, 32, num_of_action],
             torch.nn.ReLU()
         )
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-5)
 
     def select_action(
         self,
@@ -149,8 +151,10 @@ class Policy(torch.nn.Module):
         encoded_state = self.encoder(embedded_state, state_mask)
 
         # Get action probs
+        # encoded_state = torch.ones(encoded_state.shape).to(0)
+        # print(encoded_state)
         action_scores = self.feedforward(encoded_state.detach())
-        action_probs = torch.nn.functional.softmax(action_scores, dim=1)
+        action_probs = torch.nn.functional.softmax(action_scores)
 
         # Get action
         m = torch.distributions.Categorical(action_probs)
@@ -166,8 +170,9 @@ class REINFORCER(torch.nn.Module):
         encoder: torch.nn.Module,
         classifier: torch.nn.Module,
         augmenter_list: List[Augmenter],
-        max_step: int = 3,
-        gamma: float = 0.99
+        vocab: Vocabulary,
+        max_step: int = 9,
+        gamma: float = 0.999
     ):
         super(REINFORCER, self).__init__()
 
@@ -184,6 +189,8 @@ class REINFORCER(torch.nn.Module):
             augmenter_list,
             0.4
         )
+
+        self.vocab = vocab
 
         self.max_step = max_step
         self.gamma = gamma
@@ -231,9 +238,37 @@ class REINFORCER(torch.nn.Module):
         self,
         loss
     ):
+        print(loss)
         loss.backward()
         self.policy.optimizer.step()
         self.policy.optimizer.zero_grad()
+
+    def _print_tokens_from_index(
+        self,
+        token_ids: torch.Tensor
+    ):
+        token_ids = token_ids.detach().clone().tolist()[0]
+        tokens = []
+
+        for token_id in token_ids:
+            tokens.append(self.vocab.get_token_from_index(token_id))
+
+        print(tokens)
+
+    def _report_action(
+        self,
+        step: int,
+        action: int,
+        origin_state: Dict[str, Dict[str, torch.Tensor]],
+        aug_state: Dict[str, Dict[str, torch.Tensor]]
+    ):
+        if step == 0:
+            print("Origin Token: ")
+            self._print_tokens_from_index(origin_state["tokens"]["tokens"])
+        print("Step        : " + str(step))
+        print("Action      : " + str(action))
+        print("Aug Token   : ")
+        self._print_tokens_from_index(aug_state["tokens"]["tokens"])
 
     @overrides
     def forward(
@@ -256,10 +291,14 @@ class REINFORCER(torch.nn.Module):
             log_probs.append(action_log_prob)
             rewards.append(reward)
 
+            self._report_action(step, action, wrapped_token_of_sent, state)
+
             if done:
                 break
 
         # calculate loss
+        print(log_probs)
+        print(rewards)
         loss = self._calculate_loss(log_probs, rewards)
 
         # Prepare output dict
