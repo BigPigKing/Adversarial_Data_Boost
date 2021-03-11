@@ -78,11 +78,12 @@ class Environment(object):
         # Calculate Reward
         if self.cos_similarity(self.encoded_initial_state, encoded_augmented_state) < self.similarity_threshold:
             done = True
-            reward = -1.00
+            reward = -0.5
         else:
             augmented_prediction = self.classifier(encoded_augmented_state)
-            reward = -np.log(self.mse_loss_reward(self.initial_prediction.detach(), augmented_prediction.detach()).item())
-            reward = np.clip(reward, 0, 5)
+            reward = np.log(self.mse_loss_reward(self.initial_prediction.detach(), augmented_prediction.detach()).cpu().item())
+            reward = np.clip(reward, -20, -1)
+            reward = 1 / - reward
 
         return reward, done
 
@@ -96,7 +97,7 @@ class Environment(object):
         # Last action will be "stop"
         if action == len(self.augmenter_list) - 1:
             done = True
-            reward = 1.0
+            reward = 1 / 20.0
         else:
             augmented_state = self.augmenter_list[action].augment(self.current_state)
             reward, done = self._get_env_respond(augmented_state)
@@ -126,7 +127,7 @@ class Policy(torch.nn.Module):
             [64, 32, num_of_action],
             torch.nn.ReLU()
         )
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-5)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
 
     def select_action(
         self,
@@ -151,16 +152,14 @@ class Policy(torch.nn.Module):
         encoded_state = self.encoder(embedded_state, state_mask)
 
         # Get action probs
-        # encoded_state = torch.ones(encoded_state.shape).to(0)
-        # print(encoded_state)
         action_scores = self.feedforward(encoded_state.detach())
-        action_probs = torch.nn.functional.softmax(action_scores)
+        action_probs = torch.nn.functional.softmax(action_scores, dim=1)
 
         # Get action
         m = torch.distributions.Categorical(action_probs)
         action = m.sample()
 
-        return action.item(), action_probs
+        return action.item(), m.log_prob(action)
 
 
 class REINFORCER(torch.nn.Module):
@@ -172,7 +171,7 @@ class REINFORCER(torch.nn.Module):
         augmenter_list: List[Augmenter],
         vocab: Vocabulary,
         max_step: int = 9,
-        gamma: float = 0.999
+        gamma: float = 0.99
     ):
         super(REINFORCER, self).__init__()
 
@@ -187,7 +186,7 @@ class REINFORCER(torch.nn.Module):
             encoder,
             classifier,
             augmenter_list,
-            0.4
+            0.7
         )
 
         self.vocab = vocab
@@ -238,8 +237,10 @@ class REINFORCER(torch.nn.Module):
         self,
         loss
     ):
-        print(loss)
         loss.backward()
+
+        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 10)
+
         self.policy.optimizer.step()
         self.policy.optimizer.zero_grad()
 
@@ -291,18 +292,21 @@ class REINFORCER(torch.nn.Module):
             log_probs.append(action_log_prob)
             rewards.append(reward)
 
-            self._report_action(step, action, wrapped_token_of_sent, state)
+            # self._report_action(step, action, wrapped_token_of_sent, state)
 
             if done:
-                break
+                if step == 0:
+                    done = False
+                else:
+                    break
 
         # calculate loss
-        print(log_probs)
-        print(rewards)
+        # print(rewards)
         loss = self._calculate_loss(log_probs, rewards)
 
         # Prepare output dict
         output_dict["loss"] = loss
+        output_dict["ep_reward"] = torch.sum(torch.tensor(rewards), dim=0)
 
         return output_dict
 

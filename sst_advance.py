@@ -9,6 +9,7 @@ from lib.model import SentimentModel
 from lib.trainer import TextTrainer, ReinforceTrainer
 from lib.augmenter import DeleteAugmenter, SwapAugmenter, IdentityAugmenter, InsertAugmenter, ReplaceAugmenter
 from lib.reinforcer import REINFORCER
+from lib.utils import add_wordnet_to_vocab
 
 from torch.utils.data import DataLoader
 from allennlp.data import allennlp_collate
@@ -26,6 +27,7 @@ def main():
 
     # Set Vocabulary Set
     vocab = Vocabulary.from_instances(train_ds)
+    vocab = add_wordnet_to_vocab(vocab)
     train_ds.index_with(vocab)
     valid_ds.index_with(vocab)
     test_ds.index_with(vocab)
@@ -92,7 +94,7 @@ def main():
 
     train_data_loader = DataLoader(train_ds, batch_size=1, shuffle=True, collate_fn=allennlp_collate)
     reinforce_trainer = ReinforceTrainer(reinforcer)
-    reinforce_trainer.fit(20, train_data_loader)
+    reinforce_trainer.fit(50, train_data_loader)
 
 
 if __name__ == '__main__':

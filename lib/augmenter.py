@@ -109,34 +109,36 @@ class ReplaceAugmenter(Augmenter):
         self.magnitude = magnitude
         self.vocab = vocab
 
-    def _get_synomym_tokens(
+    def _get_synonyms(
         self,
         token: str
     ):
-        synomyms = set()
+        synonyms = set()
 
         for syn in wordnet.synsets(token):
             for synonym_lemma in syn.lemmas():
                 synonym = synonym_lemma.name().replace('_', ' ').replace('-', ' ').lower()
                 synonym = "".join([char for char in synonym if char in ' qwertyuiopasdfghjklzxcvbnm'])
-                synomyms.add(synonym)
+                synonyms.add(tuple(synonym.split()))
 
-        synomyms = list(synomyms)
+        synonyms = list(synonyms)
 
-        if token in synomyms:
-            return synomyms.remove(token)
+        if tuple([token]) in synonyms:
+            synonyms.remove(tuple([token]))
         else:
-            return synomyms
+            pass
 
-    def _get_synomym_token_idxs(
+        return synonyms
+
+    def _get_replace_synonym(
         self,
         token_id: int
     ):
         token = self.vocab.get_token_from_index(token_id)
-        synomym_tokens = self._get_synomym_tokens(token)
+        synonyms = self._get_synonyms(token)
 
-        if synomym_tokens:
-            return self.vocab.add_tokens_to_namespace(synomym_tokens)
+        if synonyms:
+            return random.choice(synonyms)
         else:
             return []
 
@@ -145,17 +147,23 @@ class ReplaceAugmenter(Augmenter):
         self,
         text_tensor: torch.Tensor
     ):
-        augment_text_tensor = text_tensor.detach().clone()
-        replace_idx = random.sample(range(len(augment_text_tensor)), 1)[0]
+        augment_text_list = text_tensor.tolist()
+        replace_idx = random.sample(range(len(augment_text_list)), 1)[0]
 
-        synomym_token_idxs = self._get_synomym_token_idxs(augment_text_tensor[replace_idx].item())
+        replace_synonym = self._get_replace_synonym(augment_text_list[replace_idx])
 
-        if synomym_token_idxs:
-            augment_text_tensor[replace_idx] = random.choice(synomym_token_idxs)
+        if replace_synonym:
+            for idx, synonym_token in enumerate(replace_synonym):
+                synonym_idx = self.vocab.get_token_index(synonym_token)
+
+                if idx == 0:
+                    augment_text_list[replace_idx] = synonym_idx
+                else:
+                    augment_text_list.insert(replace_idx + idx, synonym_idx)
         else:
             pass
 
-        return augment_text_tensor
+        return torch.tensor(augment_text_list).to(text_tensor.get_device())
 
 
 class InsertAugmenter(ReplaceAugmenter):
@@ -172,18 +180,19 @@ class InsertAugmenter(ReplaceAugmenter):
         self,
         text_tensor: torch.tensor
     ):
-        text_list = text_tensor.tolist()
+        augment_text_list = text_tensor.tolist()
+        replace_idx = random.sample(range(len(augment_text_list)), 1)[0]
 
-        replace_idx = random.sample(range(len(text_list)), 1)[0]
+        replace_synonym = self._get_replace_synonym(augment_text_list[replace_idx])
 
-        synomym_token_idxs = super(InsertAugmenter, self)._get_synomym_token_idxs(text_list[replace_idx])
-
-        if synomym_token_idxs:
-            text_list.insert(random.choice(synomym_token_idxs), replace_idx)
+        if replace_synonym:
+            for idx, synonym_token in enumerate(replace_synonym):
+                synonym_idx = self.vocab.get_token_index(synonym_token)
+                augment_text_list.insert(replace_idx + idx, synonym_idx)
         else:
             pass
 
-        return torch.tensor(text_list).to(text_tensor.get_device())
+        return torch.tensor(augment_text_list).to(text_tensor.get_device())
 
 
 class IdentityAugmenter(Augmenter):

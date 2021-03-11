@@ -26,11 +26,24 @@ class ReinforceTrainer(Trainer):
         self,
         data_loader: torch.utils.data.DataLoader
     ):
+        long_reward = 0.0
+        total_reward = 0.0
         for episode_idx, episode in tqdm(enumerate(data_loader)):
             episode = move_to_device(episode, 0)
             output_dict = self.train_model.forward(episode["tokens"])
 
             self.train_model.optimize(output_dict["loss"])
+
+            long_reward += output_dict["ep_reward"]
+            total_reward += output_dict["ep_reward"]
+
+            if (episode_idx+1) % 100 == 0:
+                print("Episode {} avg_reward       : {}".format(episode_idx, output_dict["ep_reward"]))
+
+            if (episode_idx+1) % 1000 == 0:
+                print("Last 1000 Episode avg_reward: {}".format(long_reward/1000))
+                long_reward = 0
+        print(total_reward)
 
     def fit(
         self,
