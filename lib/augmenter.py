@@ -42,7 +42,7 @@ class DeleteAugmenter(Augmenter):
     def __init__(
         self,
         padded_idx: int = 0,
-        magnitude: float = 0.2
+        magnitude: float = 0.1
     ):
         super(DeleteAugmenter, self).__init__(padded_idx=padded_idx)
         self.magnitude = magnitude

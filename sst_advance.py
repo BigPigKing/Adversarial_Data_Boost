@@ -11,6 +11,7 @@ from lib.augmenter import DeleteAugmenter, SwapAugmenter, IdentityAugmenter, Ins
 from lib.reinforcer import REINFORCER
 from lib.utils import add_wordnet_to_vocab
 
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from allennlp.data import allennlp_collate
 from allennlp.data.vocabulary import Vocabulary
@@ -19,6 +20,8 @@ from allennlp.modules.token_embedders import Embedding
 
 logger = logging.getLogger(__name__)
 USE_GPU = torch.cuda.is_available()
+IS_PRETRAINED_TEXT = True
+IS_PRETRAINED_REINFORCE = False
 
 
 def main():
@@ -28,6 +31,7 @@ def main():
     # Set Vocabulary Set
     vocab = Vocabulary.from_instances(train_ds)
     vocab = add_wordnet_to_vocab(vocab)
+
     train_ds.index_with(vocab)
     valid_ds.index_with(vocab)
     test_ds.index_with(vocab)
@@ -83,18 +87,30 @@ def main():
         reinforcer,
     )
 
+    # Writer declartion
+    writer = SummaryWriter()
+
     # Model move to gpu
     if USE_GPU is True:
         sentiment_model = sentiment_model.cuda()
 
-    # Trainer declartion
-    text_trainer = TextTrainer(sentiment_model)
+    # Text trainer declartion
+    if IS_PRETRAINED_TEXT is True:
+        sentiment_model.encoder.load_state_dict(torch.load("encoder.pkl"))
+        sentiment_model.classifier.load_state_dict(torch.load("classifier.pkl"))
+    else:
+        text_trainer = TextTrainer(sentiment_model)
+        text_trainer.fit(15, train_data_loader, valid_data_loader, test_data_loader)
+        torch.save(sentiment_model.encoder.state_dict(), "encoder.pkl")
+        torch.save(sentiment_model.classifier.state_dict(), "classifier.pkl")
 
-    text_trainer.fit(15, train_data_loader, valid_data_loader, test_data_loader)
-
-    train_data_loader = DataLoader(train_ds, batch_size=1, shuffle=True, collate_fn=allennlp_collate)
-    reinforce_trainer = ReinforceTrainer(reinforcer)
-    reinforce_trainer.fit(50, train_data_loader)
+    # REINFORCE trainer declartion
+    if IS_PRETRAINED_REINFORCE is True:
+        sentiment_model.reinforcer.policy.load_state_dict(torch.load("policy.pkl"))
+    else:
+        train_data_loader = DataLoader(train_ds, batch_size=1, shuffle=True, collate_fn=allennlp_collate)
+        reinforce_trainer = ReinforceTrainer(reinforcer, writer)
+        reinforce_trainer.fit(2, 600, train_data_loader, is_save=True)
 
 
 if __name__ == '__main__':

@@ -3,6 +3,7 @@ import numpy as np
 
 from overrides import overrides
 from typing import List, Dict
+from .utils import get_sentence_from_text_field_tensors
 from .augmenter import Augmenter
 from allennlp.data import Vocabulary
 from allennlp.nn.util import get_token_ids_from_text_field_tensors, get_text_field_mask
@@ -170,8 +171,10 @@ class REINFORCER(torch.nn.Module):
         classifier: torch.nn.Module,
         augmenter_list: List[Augmenter],
         vocab: Vocabulary,
-        max_step: int = 9,
-        gamma: float = 0.99
+        similarity_threshold: float = 0.9,
+        max_step: int = 20,
+        gamma: float = 0.99,
+        clip_grad: int = 10
     ):
         super(REINFORCER, self).__init__()
 
@@ -186,13 +189,14 @@ class REINFORCER(torch.nn.Module):
             encoder,
             classifier,
             augmenter_list,
-            0.7
+            similarity_threshold
         )
 
         self.vocab = vocab
 
         self.max_step = max_step
         self.gamma = gamma
+        self.clip_grad = clip_grad
 
     def _get_token_of_sents(
         self,
@@ -219,13 +223,20 @@ class REINFORCER(torch.nn.Module):
         losses = []
         returns = []
 
+        # Calculate cumulated reward
         for r in rewards[::-1]:
             R = r + self.gamma * R
             returns.insert(0, R)
 
         returns = torch.tensor(returns)
-        returns = (returns - returns.mean()) / (returns.std() + np.finfo(np.float32).eps.item())
 
+        # If the length equals to one, we do not need to do any standardlization
+        if len(rewards) == 1:
+            pass
+        else:
+            returns = (returns - returns.mean()) / (returns.std() + np.finfo(np.float32).eps.item())
+
+        # Calculate loss
         for log_prob, R in zip(log_probs, returns):
             losses.append(-log_prob * R)
 
@@ -239,37 +250,10 @@ class REINFORCER(torch.nn.Module):
     ):
         loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 10)
+        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.clip_grad)
 
         self.policy.optimizer.step()
         self.policy.optimizer.zero_grad()
-
-    def _print_tokens_from_index(
-        self,
-        token_ids: torch.Tensor
-    ):
-        token_ids = token_ids.detach().clone().tolist()[0]
-        tokens = []
-
-        for token_id in token_ids:
-            tokens.append(self.vocab.get_token_from_index(token_id))
-
-        print(tokens)
-
-    def _report_action(
-        self,
-        step: int,
-        action: int,
-        origin_state: Dict[str, Dict[str, torch.Tensor]],
-        aug_state: Dict[str, Dict[str, torch.Tensor]]
-    ):
-        if step == 0:
-            print("Origin Token: ")
-            self._print_tokens_from_index(origin_state["tokens"]["tokens"])
-        print("Step        : " + str(step))
-        print("Action      : " + str(action))
-        print("Aug Token   : ")
-        self._print_tokens_from_index(aug_state["tokens"]["tokens"])
 
     @overrides
     def forward(
@@ -284,6 +268,7 @@ class REINFORCER(torch.nn.Module):
         state = self.env.reset(wrapped_token_of_sent)
         log_probs = []
         rewards = []
+        actions = []
 
         for step in range(self.max_step):
             action, action_log_prob = self.policy.select_action(state)
@@ -291,20 +276,18 @@ class REINFORCER(torch.nn.Module):
 
             log_probs.append(action_log_prob)
             rewards.append(reward)
+            actions.append(action)
 
-            # self._report_action(step, action, wrapped_token_of_sent, state)
-
-            if done:
-                if step == 0:
-                    done = False
-                else:
-                    break
+            if done is True:
+                break
 
         # calculate loss
-        # print(rewards)
         loss = self._calculate_loss(log_probs, rewards)
 
         # Prepare output dict
+        output_dict["origin_sentence"] = get_sentence_from_text_field_tensors(self.vocab, wrapped_token_of_sent)
+        output_dict["augment_sentence"] = get_sentence_from_text_field_tensors(self.vocab, state)
+        output_dict["actions"] = actions
         output_dict["loss"] = loss
         output_dict["ep_reward"] = torch.sum(torch.tensor(rewards), dim=0)
 

@@ -2,8 +2,10 @@ import abc
 import torch
 
 from tqdm import tqdm
+from typing import Dict
 from overrides import overrides
 from allennlp.nn.util import move_to_device
+from torch.utils.tensorboard import SummaryWriter
 
 
 class Trainer(metaclass=abc.ABCMeta):
@@ -17,42 +19,85 @@ class Trainer(metaclass=abc.ABCMeta):
 class ReinforceTrainer(Trainer):
     def __init__(
         self,
-        train_model: torch.nn.Module
+        train_model: torch.nn.Module,
+        writer: SummaryWriter
     ):
         super(ReinforceTrainer, self).__init__()
         self.train_model = train_model
+        self.writer = writer
+        self.record_step = 0
+
+    def _record(
+        self,
+        step: int,
+        batch_output_dict: Dict
+    ):
+        self.writer.add_scalar("Loss", batch_output_dict["loss"], step)
+        self.writer.add_scalar("Reward", batch_output_dict["reward"], step)
+        self.writer.add_text("Origin", batch_output_dict["origin_sentences"][-1], step)
+        self.writer.add_text("Augment", batch_output_dict["augment_sentences"][-1], step)
+        action_str = [str(x) for x in batch_output_dict["actions"]]
+        action_str = ' '.join(action_str)
+        self.writer.add_text("Action", action_str, step)
 
     def _fit_epoch(
         self,
-        data_loader: torch.utils.data.DataLoader
+        batch_size: int,
+        data_loader: torch.utils.data.DataLoader,
+        is_save: bool
     ):
-        long_reward = 0.0
-        total_reward = 0.0
+        batch_output_dict = {
+            "loss": 0.0,
+            "reward": 0.0,
+            "actions": [],
+            "origin_sentences": [],
+            "augment_sentences": []
+        }
+
         for episode_idx, episode in tqdm(enumerate(data_loader)):
+            # feedforward and get loss
             episode = move_to_device(episode, 0)
             output_dict = self.train_model.forward(episode["tokens"])
 
-            self.train_model.optimize(output_dict["loss"])
+            # update batch dict
+            batch_output_dict["loss"] += output_dict["loss"]
+            batch_output_dict["reward"] += output_dict["ep_reward"]
 
-            long_reward += output_dict["ep_reward"]
-            total_reward += output_dict["ep_reward"]
+            # batch updating
+            if (episode_idx+1) % batch_size == 0:
+                # Record
+                batch_output_dict["origin_sentences"] += output_dict["origin_sentence"]
+                batch_output_dict["augment_sentences"] += output_dict["augment_sentence"]
+                batch_output_dict["actions"] += output_dict["actions"]
+                self._record(self.record_step, batch_output_dict)
+                self.record_step += 1
 
-            if (episode_idx+1) % 100 == 0:
-                print("Episode {} avg_reward       : {}".format(episode_idx, output_dict["ep_reward"]))
+                # Optimize
+                self.train_model.optimize(batch_output_dict["loss"] / batch_size)
 
-            if (episode_idx+1) % 1000 == 0:
-                print("Last 1000 Episode avg_reward: {}".format(long_reward/1000))
-                long_reward = 0
-        print(total_reward)
+                # Initialize
+                batch_output_dict = {
+                    "loss": 0.0,
+                    "reward": 0.0,
+                    "actions": [],
+                    "origin_sentences": [],
+                    "augment_sentences": []
+                }
+
+                # Save
+                if is_save is True:
+                    torch.save(self.train_model.reinforcer.policy.state_dict(), "policy" + str(self.record_step) + ".pkl")
 
     def fit(
         self,
         epochs: int,
-        data_loader: torch.utils.data.DataLoader
+        batch_size: int,
+        data_loader: torch.utils.data.DataLoader,
+        is_save: False
     ):
         for epoch in tqdm(range(epochs)):
             self.train_model.train()
-            self._fit_epoch(data_loader)
+            self._fit_epoch(batch_size, data_loader, is_save=is_save)
 
 
 class TextTrainer(Trainer):
@@ -156,6 +201,16 @@ class TextTrainer(Trainer):
             print("Testing Loss   : {:.5f}".format(test_avg_loss))
             print("Testing Acc    : {:.5f}".format(test_avg_acc))
             print("----------------------------------------------")
+
+
+class OverallTrainer(Trainer):
+    def __init__(
+        self,
+        text_trainer: Trainer,
+        reinforce_trainer: Trainer
+    ):
+        self.text_trainer = text_trainer
+        self.reinforce_trainer = reinforce_trainer
 
 
 def main():
