@@ -3,7 +3,7 @@ import math
 import torch
 import random
 
-from .utils import pad_text_tensor_list, unpad_text_field_tensors
+from .utils import pad_text_tensor_list, unpad_text_field_tensors, save_obj
 from typing import Dict
 from overrides import overrides
 from nltk.corpus import wordnet
@@ -41,11 +41,10 @@ class Augmenter(metaclass=abc.ABCMeta):
 class DeleteAugmenter(Augmenter):
     def __init__(
         self,
-        padded_idx: int = 0,
-        magnitude: float = 0.1
+        delete_augmenter_params: Dict
     ):
-        super(DeleteAugmenter, self).__init__(padded_idx=padded_idx)
-        self.magnitude = magnitude
+        super(DeleteAugmenter, self).__init__(padded_idx=delete_augmenter_params["padded_idx"])
+        self.magnitude = delete_augmenter_params["magnitude"]
 
     @overrides
     def _augment(
@@ -71,11 +70,10 @@ class DeleteAugmenter(Augmenter):
 class SwapAugmenter(Augmenter):
     def __init__(
         self,
-        padded_idx: int = 0,
-        magnitude: int = 1
+        swap_augmenter_params: Dict
     ):
-        super(SwapAugmenter, self).__init__(padded_idx=padded_idx)
-        self.magnitude = magnitude
+        super(SwapAugmenter, self).__init__(padded_idx=swap_augmenter_params["padded_idx"])
+        self.magnitude = swap_augmenter_params["magnitude"]
 
     @overrides
     def _augment(
@@ -102,14 +100,15 @@ class ReplaceAugmenter(Augmenter):
     def __init__(
         self,
         vocab: Vocabulary,
-        padded_idx: int = 0,
-        magnitude: int = 1,
+        synonym_dict: Dict,
+        replace_augmenter_params: Dict
     ):
-        super(ReplaceAugmenter, self).__init__(padded_idx=padded_idx)
-        self.magnitude = magnitude
+        super(ReplaceAugmenter, self).__init__(padded_idx=replace_augmenter_params["padded_idx"])
+        self.magnitude = replace_augmenter_params["magnitude"]
         self.vocab = vocab
+        self.synonym_dict = synonym_dict
 
-    def _get_synonyms(
+    def _find_synonyms(
         self,
         token: str
     ):
@@ -122,6 +121,20 @@ class ReplaceAugmenter(Augmenter):
                 synonyms.add(tuple(synonym.split()))
 
         synonyms = list(synonyms)
+
+        return synonyms
+
+    def _get_synonyms(
+        self,
+        token: str
+    ):
+        try:
+            synonyms = self.synonym_dict[token]
+        except KeyError:
+            synonyms = self._find_synonyms(token)
+            self.synonym_dict[token] = synonyms
+
+            save_obj(self.synonym_dict, "sst_synonyms")
 
         if tuple([token]) in synonyms:
             synonyms.remove(tuple([token]))
@@ -170,10 +183,14 @@ class InsertAugmenter(ReplaceAugmenter):
     def __init__(
         self,
         vocab: Vocabulary,
-        padded_idx: int = 0,
-        magnitude: int = 1
+        synonym_dict: Dict,
+        insert_augmenter_params: Dict
     ):
-        super(InsertAugmenter, self).__init__(padded_idx=padded_idx, vocab=vocab, magnitude=magnitude)
+        super(InsertAugmenter, self).__init__(
+            vocab,
+            synonym_dict,
+            insert_augmenter_params
+        )
 
     @overrides
     def _augment(

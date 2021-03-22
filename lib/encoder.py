@@ -1,5 +1,6 @@
 import torch
 
+from typing import Dict
 from allennlp.modules.seq2seq_encoders import GruSeq2SeqEncoder
 from allennlp.modules.seq2vec_encoders import GruSeq2VecEncoder
 
@@ -8,21 +9,23 @@ class TextEncoder(torch.nn.Module):
     def __init__(
         self,
         input_size: int,
+        s2s_encoder_params: Dict,
+        s2v_encoder_params: Dict
     ):
         super(TextEncoder, self).__init__()
 
         s2s_encoder = GruSeq2SeqEncoder(
             input_size=input_size,
-            hidden_size=300,
-            num_layers=3,
-            bidirectional=True
+            hidden_size=s2s_encoder_params["hidden_size"],
+            num_layers=s2s_encoder_params["num_layers"],
+            bidirectional=s2s_encoder_params["bidirectional"]
         )
 
         s2v_encoder = GruSeq2VecEncoder(
             input_size=s2s_encoder.get_output_dim(),
-            hidden_size=300,
-            num_layers=3,
-            bidirectional=True
+            hidden_size=s2v_encoder_params["hidden_size"],
+            num_layers=s2v_encoder_params["num_layers"],
+            bidirectional=s2v_encoder_params["bidirectional"]
         )
 
         self.encoders = torch.nn.ModuleList([s2s_encoder, s2v_encoder])

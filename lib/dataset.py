@@ -150,11 +150,13 @@ def get_sst_ds(
     valid_ds = sst_dataset_reader.read(valid_data_path)
     test_ds = sst_dataset_reader.read(test_data_path)
 
-    return train_ds, valid_ds, test_ds
+    return train_ds, valid_ds, test_ds, sst_dataset_reader
 
 
 def main():
-    train_ds, valid_ds, test_ds = get_sst_ds()
+    agnews_dataset_reader = AGNewsDatasetReader()
+    train_ds = agnews_dataset_reader("../data/agnews/train.csv")
+
 
 
 if __name__ == '__main__':

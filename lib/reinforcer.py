@@ -17,7 +17,8 @@ class Environment(object):
         encoder: torch.nn.Module,
         classifier: torch.nn.Module,
         augmenter_list: List[Augmenter],
-        similarity_threshold: float
+        max_step: int,
+        env_params: Dict
     ):
         # Module initialization
         self.embedder = embedder
@@ -30,7 +31,9 @@ class Environment(object):
         self.current_state = None
         self.encoded_initial_state = None
         self.initial_prediction = None
-        self.similarity_threshold = similarity_threshold
+        self.current_step = None
+        self.max_step = max_step
+        self.similarity_threshold = env_params["similarity_threshold"]
 
         # Calculation Function
         self.cos_similarity = torch.nn.CosineSimilarity()
@@ -64,6 +67,7 @@ class Environment(object):
         self.encoded_initial_state = self.get_encoded_state(self.initial_state)
         self.initial_prediction = self.classifier(self.encoded_initial_state)
         self.current_state = wrapped_token_of_sent
+        self.current_step = 0
 
         return self.initial_state
 
@@ -76,17 +80,28 @@ class Environment(object):
         # Get encoded augmented sentence embedding for similarity calculation preparation
         encoded_augmented_state = self.get_encoded_state(augmented_state)
 
-        # Calculate Reward
+        # Calculate Reward - Typical
         if self.cos_similarity(self.encoded_initial_state, encoded_augmented_state) < self.similarity_threshold:
             done = True
             reward = -0.5
         else:
             augmented_prediction = self.classifier(encoded_augmented_state)
-            reward = np.log(self.mse_loss_reward(self.initial_prediction.detach(), augmented_prediction.detach()).cpu().item())
+            reward = np.log(
+                self.mse_loss_reward(
+                    self.initial_prediction.detach(),
+                    augmented_prediction.detach()
+                ).cpu().item()
+            )
             reward = np.clip(reward, -20, -1)
             reward = 1 / - reward
 
-        return reward, done
+        # Penelty Reward
+        penelty_reward = 0.5 * self.current_step / self.max_step
+
+        # Record Step
+        self.current_step += 1
+
+        return reward - penelty_reward, done
 
     def step(
         self,
@@ -115,7 +130,8 @@ class Policy(torch.nn.Module):
         embedder: torch.nn.Module,
         encoder: torch.nn.Module,
         input_dim: int,
-        num_of_action: int
+        num_of_action: int,
+        policy_params
     ):
         super(Policy, self).__init__()
 
@@ -124,11 +140,16 @@ class Policy(torch.nn.Module):
 
         self.feedforward = FeedForward(
             input_dim,
-            3,
-            [64, 32, num_of_action],
-            torch.nn.ReLU()
+            num_layers=policy_params["feedforward"]["num_layers"],
+            hidden_dims=policy_params["feedforward"]["hidden_dims"],
+            activations=policy_params["feedforward"]["activations"],
+            dropout=policy_params["feedforward"]["dropout"]
         )
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+
+        self.optimizer = policy_params["optimizer"]["select_optimizer"](
+            self.parameters(),
+            lr=policy_params["optimizer"]["lr"]
+        )
 
     def select_action(
         self,
@@ -171,10 +192,9 @@ class REINFORCER(torch.nn.Module):
         classifier: torch.nn.Module,
         augmenter_list: List[Augmenter],
         vocab: Vocabulary,
-        similarity_threshold: float = 0.9,
-        max_step: int = 20,
-        gamma: float = 0.99,
-        clip_grad: int = 10
+        env_params: Dict,
+        policy_params: Dict,
+        REINFORCE_params: Dict
     ):
         super(REINFORCER, self).__init__()
 
@@ -182,21 +202,23 @@ class REINFORCER(torch.nn.Module):
             embedder,
             encoder,
             encoder.get_output_dim(),
-            len(augmenter_list)
+            len(augmenter_list),
+            policy_params
         )
         self.env = Environment(
             embedder,
             encoder,
             classifier,
             augmenter_list,
-            similarity_threshold
+            REINFORCE_params["max_step"],
+            env_params
         )
 
         self.vocab = vocab
 
-        self.max_step = max_step
-        self.gamma = gamma
-        self.clip_grad = clip_grad
+        self.max_step = REINFORCE_params["max_step"]
+        self.gamma = REINFORCE_params["gamma"]
+        self.clip_grad = REINFORCE_params["clip_grad"]
 
     def _get_token_of_sents(
         self,
@@ -254,6 +276,27 @@ class REINFORCER(torch.nn.Module):
 
         self.policy.optimizer.step()
         self.policy.optimizer.zero_grad()
+
+    def augment(
+        self,
+        wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]]
+    ):
+        state = self.env.reset(wrapped_token_of_sent)
+        log_probs = []
+        rewards = []
+
+        for step in range(self.max_step):
+            action, action_log_prob = self.policy.select_action(state)
+            state, reward, done = self.env.step(action)
+
+            log_probs.append(action_log_prob)
+            rewards.append(reward)
+
+            if done is True:
+                break
+
+        # Prepare output dict
+        return get_sentence_from_text_field_tensors(self.vocab, state, is_tokenized=True)
 
     @overrides
     def forward(

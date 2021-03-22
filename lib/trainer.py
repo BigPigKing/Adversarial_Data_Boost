@@ -1,6 +1,7 @@
 import abc
 import torch
 
+from .utils import save_obj
 from tqdm import tqdm
 from typing import Dict
 from overrides import overrides
@@ -20,11 +21,13 @@ class ReinforceTrainer(Trainer):
     def __init__(
         self,
         train_model: torch.nn.Module,
-        writer: SummaryWriter
+        writer: SummaryWriter,
+        is_save: bool = False
     ):
         super(ReinforceTrainer, self).__init__()
         self.train_model = train_model
         self.writer = writer
+        self.is_save = is_save
         self.record_step = 0
 
     def _record(
@@ -34,8 +37,8 @@ class ReinforceTrainer(Trainer):
     ):
         self.writer.add_scalar("Loss", batch_output_dict["loss"], step)
         self.writer.add_scalar("Reward", batch_output_dict["reward"], step)
-        self.writer.add_text("Origin", batch_output_dict["origin_sentences"][-1], step)
-        self.writer.add_text("Augment", batch_output_dict["augment_sentences"][-1], step)
+        self.writer.add_text("Origin", batch_output_dict["origin_sentences"][0], step)
+        self.writer.add_text("Augment", batch_output_dict["augment_sentences"][0], step)
         action_str = [str(x) for x in batch_output_dict["actions"]]
         action_str = ' '.join(action_str)
         self.writer.add_text("Action", action_str, step)
@@ -44,7 +47,6 @@ class ReinforceTrainer(Trainer):
         self,
         batch_size: int,
         data_loader: torch.utils.data.DataLoader,
-        is_save: bool
     ):
         batch_output_dict = {
             "loss": 0.0,
@@ -66,6 +68,9 @@ class ReinforceTrainer(Trainer):
             # batch updating
             if (episode_idx+1) % batch_size == 0:
                 # Record
+                print(self.record_step)
+                print(output_dict["origin_sentence"])
+                print(output_dict["augment_sentence"])
                 batch_output_dict["origin_sentences"] += output_dict["origin_sentence"]
                 batch_output_dict["augment_sentences"] += output_dict["augment_sentence"]
                 batch_output_dict["actions"] += output_dict["actions"]
@@ -85,28 +90,29 @@ class ReinforceTrainer(Trainer):
                 }
 
                 # Save
-                if is_save is True:
-                    torch.save(self.train_model.reinforcer.policy.state_dict(), "policy" + str(self.record_step) + ".pkl")
+                if self.is_save is True:
+                    torch.save(self.train_model.policy.state_dict(), "policy" + str(self.record_step) + ".pkl")
 
     def fit(
         self,
         epochs: int,
         batch_size: int,
         data_loader: torch.utils.data.DataLoader,
-        is_save: False
     ):
         for epoch in tqdm(range(epochs)):
             self.train_model.train()
-            self._fit_epoch(batch_size, data_loader, is_save=is_save)
+            self._fit_epoch(batch_size, data_loader)
 
 
 class TextTrainer(Trainer):
     def __init__(
         self,
-        train_model: torch.nn.Module
+        train_model: torch.nn.Module,
+        is_save: bool = False
     ):
         super(TextTrainer, self).__init__()
         self.train_model = train_model
+        self.is_save = is_save
 
     def _fit_valid(
         self,
@@ -201,6 +207,12 @@ class TextTrainer(Trainer):
             print("Testing Loss   : {:.5f}".format(test_avg_loss))
             print("Testing Acc    : {:.5f}".format(test_avg_acc))
             print("----------------------------------------------")
+
+        if self.is_save is True:
+            save_obj(self.train_model.encoder.state_dict(), "encoder")
+            save_obj(self.train_model.classifier.state_dict(), "classifier")
+        else:
+            pass
 
 
 class OverallTrainer(Trainer):

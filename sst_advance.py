@@ -9,7 +9,7 @@ from lib.model import SentimentModel
 from lib.trainer import TextTrainer, ReinforceTrainer
 from lib.augmenter import DeleteAugmenter, SwapAugmenter, IdentityAugmenter, InsertAugmenter, ReplaceAugmenter
 from lib.reinforcer import REINFORCER
-from lib.utils import add_wordnet_to_vocab
+from lib.utils import add_wordnet_to_vocab, augment_and_add_instances_to_dataset, get_synonyms_from_dataset, save_obj, load_obj
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
@@ -20,13 +20,14 @@ from allennlp.modules.token_embedders import Embedding
 
 logger = logging.getLogger(__name__)
 USE_GPU = torch.cuda.is_available()
+IS_LOAD_SYNONYM_DICT = True
 IS_PRETRAINED_TEXT = True
-IS_PRETRAINED_REINFORCE = False
+IS_PRETRAINED_REINFORCE = True
 
 
 def main():
     # Get Dataset
-    train_ds, valid_ds, test_ds = get_sst_ds(granularity="5-class")
+    train_ds, valid_ds, test_ds, dataset_reader = get_sst_ds(granularity="5-class")
 
     # Set Vocabulary Set
     vocab = Vocabulary.from_instances(train_ds)
@@ -62,11 +63,18 @@ def main():
     # Schedular declartion
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau
 
+    # Get synonyms dictionary
+    if IS_LOAD_SYNONYM_DICT is False:
+        synonym_dict = get_synonyms_from_dataset(train_ds)
+        save_obj(synonym_dict, "sst_synonyms")
+    else:
+        synonym_dict = load_obj("sst_synonyms")
+
     # Augmenter declartion
     delete_augmenter = DeleteAugmenter()
     swap_augmenter = SwapAugmenter()
-    insert_augmenter = InsertAugmenter(vocab=vocab)
-    replace_augmenter = ReplaceAugmenter(vocab=vocab)
+    insert_augmenter = InsertAugmenter(vocab=vocab, synonym_dict=synonym_dict)
+    replace_augmenter = ReplaceAugmenter(vocab=vocab, synonym_dict=synonym_dict)
     identity_augmenter = IdentityAugmenter()
 
     # Reinforcer declation
@@ -100,17 +108,41 @@ def main():
         sentiment_model.classifier.load_state_dict(torch.load("classifier.pkl"))
     else:
         text_trainer = TextTrainer(sentiment_model)
-        text_trainer.fit(15, train_data_loader, valid_data_loader, test_data_loader)
+        text_trainer.fit(24, train_data_loader, valid_data_loader, test_data_loader)
         torch.save(sentiment_model.encoder.state_dict(), "encoder.pkl")
         torch.save(sentiment_model.classifier.state_dict(), "classifier.pkl")
 
     # REINFORCE trainer declartion
     if IS_PRETRAINED_REINFORCE is True:
-        sentiment_model.reinforcer.policy.load_state_dict(torch.load("policy.pkl"))
+        sentiment_model.reinforcer.policy.load_state_dict(torch.load("policy23.pkl"))
     else:
         train_data_loader = DataLoader(train_ds, batch_size=1, shuffle=True, collate_fn=allennlp_collate)
         reinforce_trainer = ReinforceTrainer(reinforcer, writer)
         reinforce_trainer.fit(2, 600, train_data_loader, is_save=True)
+
+    augment_instances = []
+    augment_instances += load_obj("augment")
+
+    sentiment_model.reinforcer.policy.load_state_dict(torch.load("policy23.pkl"))
+
+    augment_instances += augment_and_add_instances_to_dataset(
+        dataset_reader,
+        train_ds,
+        reinforcer
+    )
+
+    sentiment_model.reinforcer.policy.load_state_dict(torch.load("policy21.pkl"))
+
+    augment_instances += augment_and_add_instances_to_dataset(
+        dataset_reader,
+        train_ds,
+        reinforcer
+    )
+
+    train_ds.instances += augment_instances
+
+    train_data_loader = DataLoader(train_ds, batch_size=200, shuffle=True, collate_fn=allennlp_collate)
+    text_trainer.fit(30, train_data_loader, valid_data_loader, test_data_loader)
 
 
 if __name__ == '__main__':

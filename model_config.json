@@ -1,0 +1,135 @@
+{
+    "env": {
+        "USE_GPU": 0
+    },
+
+    "synonyms": {
+        "synonyms_filepath": "sst_synonyms"
+    },
+
+    "dataset": {
+        "select_dataset": "sst",
+        "sst": {
+            "granularity": "5-class"
+        }
+    },
+
+    "dataloader": {
+        "batch_size": 200,
+        "shuffle": true
+    },
+
+    "embedder": {
+        "pretrained_embedding": "glove",
+        "glove": {
+            "embedding_dim": 300,
+            "padding_index": 0,
+            "pretrained_filepath": "pretrained_weight/glove.6B.300d.txt"
+        }
+    },
+
+    "encoder": {
+        "pretrained_weight": "none",
+        "s2s_encoder": {
+            "hidden_size": 300,
+            "num_layers": 3,
+            "bidirectional": true
+        },
+        "s2v_encoder": {
+            "hidden_size": 300,
+            "num_layers": 3,
+            "bidirectional": true
+        }
+    },
+
+    "classifier": {
+        "feedforward": {
+            "num_layers": 2,
+            "hidden_dims": [300, 150],
+            "activations": "relu",
+            "dropout": 0.3
+        }
+    },
+
+    "augmenter": {
+        "select_idx": [0, 1, 2, 3],
+
+        "delete_augmenter": {
+            "padded_idx": 0,
+            "magnitude": 0.1
+        },
+
+        "swap_augmenter": {
+            "padded_idx": 0,
+            "magnitude": 1
+        },
+
+        "replace_augmenter": {
+            "padded_idx": 0,
+            "magnitude": 1
+        },
+
+        "insert_augmenter": {
+            "padded_idx": 0,
+            "magnitude": 1
+        }
+    },
+
+    "reinforcer": {
+        "env": {
+            "similarity_threshold": 0.90
+        },
+
+        "policy": {
+            "pretrained_weight": "policy23",
+            "feedforward": {
+                "num_layers": 3,
+                "hidden_dims": [64, 32],
+                "activations": "relu",
+                "dropout": 0.3
+            },
+
+            "optimizer": {
+                "select_optimizer": "adam",
+                "lr": 1e-3
+            }
+        },
+
+        "REINFORCE": {
+            "gamma": 0.99,
+            "clip_grad": 10,
+            "max_step": 20
+        }
+    },
+
+    "sentiment_model": {
+        "optimizer": {
+            "select_optimizer": "adam",
+            "lr": 1e-5
+        },
+
+        "scheduler": {
+            "select_scheduler": "none"
+        },
+
+        "criterions": {
+            "classification_criterion": "cross_entropy",
+            "contrastive_criterion": "consine_embedding"
+        },
+
+        "evaluation": "categorical"
+    },
+
+    "trainer": {
+        "text_trainer": {
+            "epochs": 24,
+            "is_save": true
+        },
+
+        "reinforce_trainer": {
+            "epochs": 3,
+            "batch_size": 600,
+            "is_save": true
+        }
+    }
+}

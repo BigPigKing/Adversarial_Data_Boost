@@ -5,7 +5,6 @@ from typing import Dict
 from overrides import overrides
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.nn.util import get_text_field_mask
-from allennlp.training.metrics import CategoricalAccuracy
 
 
 class SentimentModel(torch.nn.Module):
@@ -16,8 +15,7 @@ class SentimentModel(torch.nn.Module):
         encoder: torch.nn.ModuleList,
         classifier: torch.nn.ModuleList,
         reinforcer: REINFORCER,
-        optimizer: torch.optim = torch.optim.Adam,
-        scheduler: torch.optim.lr_scheduler = None,
+        sentiment_model_params: Dict
     ):
         super(SentimentModel, self).__init__()
         # Model Augmenter
@@ -29,23 +27,23 @@ class SentimentModel(torch.nn.Module):
         self.classifier = classifier
 
         # Loss initiailization
-        self.classification_criterion = torch.nn.CrossEntropyLoss()
-        self.contrastive_criterion = torch.nn.CosineEmbeddingLoss()
+        self.classification_criterion = sentiment_model_params["criterions"]["classification_criterion"]
+        self.contrastive_criterion = sentiment_model_params["criterions"]["contrastive_criterion"]
 
         # Optimizer initialization
-        self.optimizer = optimizer(
+        self.optimizer = sentiment_model_params["optimizer"]["select_optimizer"](
             self.parameters(),
-            lr=0.00001
+            lr=sentiment_model_params["optimizer"]["lr"]
         )
 
-        # Schedular inititailzation
-        if scheduler is not None:
-            self.scheduler = scheduler(self.optimizer)
+        # Scheduler inititailzation
+        if sentiment_model_params["scheduler"]["select_scheduler"] != "none":
+            self.scheduler = sentiment_model_params["scheduler"]["select_scheduler"](self.optimizer)
         else:
             self.scheduler = None
 
         # Evaluate initialization
-        self.accuracy = CategoricalAccuracy()
+        self.accuracy = sentiment_model_params["evaluation"]
 
         # Reinforcer initialization
         self.reinforcer = reinforcer

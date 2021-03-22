@@ -1,5 +1,6 @@
 import torch
 
+from typing import Dict
 from overrides import overrides
 from allennlp.modules import FeedForward
 
@@ -8,16 +9,17 @@ class TextClassifier(torch.nn.Module):
     def __init__(
         self,
         input_size: int,
-        output_size: int
+        output_size: int,
+        feedforward_params: Dict
     ):
         super(TextClassifier, self).__init__()
 
         feedforward = FeedForward(
             input_dim=input_size,
-            num_layers=2,
-            hidden_dims=[300, 150],
-            activations=torch.nn.ReLU(),
-            dropout=0.3
+            num_layers=feedforward_params["num_layers"],
+            hidden_dims=feedforward_params["hidden_dims"],
+            activations=feedforward_params["activations"],
+            dropout=feedforward_params["dropout"]
         )
 
         final_linear = torch.nn.Linear(
