@@ -148,8 +148,7 @@ class Policy(torch.nn.Module):
 
         self.optimizer = policy_params["optimizer"]["select_optimizer"](
             self.parameters(),
-            lr=policy_params["optimizer"]["lr"]
-        )
+            lr=policy_params["optimizer"]["lr"])
 
     def select_action(
         self,

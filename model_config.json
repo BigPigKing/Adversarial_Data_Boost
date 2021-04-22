@@ -1,10 +1,14 @@
 {
     "env": {
-        "USE_GPU": 0
+        "USE_GPU": 0,
+        "IS_TRAIN_TEXT_CLASSIFIER": true,
+        "IS_TRAIN_REINFORCER": true,
+        "IS_GENERATE_AUGMENTED_DATA": true,
+        "IS_AUGMENTED_DATA_FINETUNE": true
     },
 
     "synonyms": {
-        "synonyms_filepath": "sst_synonyms"
+        "synonyms_filepath": "none"
     },
 
     "dataset": {
@@ -23,9 +27,10 @@
         "pretrained_embedding": "glove",
         "glove": {
             "embedding_dim": 300,
-            "padding_index": 0,
-            "pretrained_filepath": "pretrained_weight/glove.6B.300d.txt"
-        }
+            "pretrained_filepath": "pretrained_weight/glove.840B.300d.txt"
+        },
+        "trainable": true,
+        "projection_dim": 300
     },
 
     "encoder": {
@@ -43,10 +48,11 @@
     },
 
     "classifier": {
+        "pretrained_weight": "none",
         "feedforward": {
-            "num_layers": 2,
-            "hidden_dims": [300, 150],
-            "activations": "relu",
+            "num_layers": 3,
+            "hidden_dims": [300, 150, 75],
+            "activations": "silu",
             "dropout": 0.3
         }
     },
@@ -56,21 +62,25 @@
 
         "delete_augmenter": {
             "padded_idx": 0,
+            "oov_idx": 1,
             "magnitude": 0.1
         },
 
         "swap_augmenter": {
             "padded_idx": 0,
+            "oov_idx": 1,
             "magnitude": 1
         },
 
         "replace_augmenter": {
             "padded_idx": 0,
+            "oov_idx": 1,
             "magnitude": 1
         },
 
         "insert_augmenter": {
             "padded_idx": 0,
+            "oov_idx": 1,
             "magnitude": 1
         }
     },
@@ -81,7 +91,7 @@
         },
 
         "policy": {
-            "pretrained_weight": "policy23",
+            "pretrained_weight": "none",
             "feedforward": {
                 "num_layers": 3,
                 "hidden_dims": [64, 32],
@@ -104,7 +114,7 @@
 
     "sentiment_model": {
         "optimizer": {
-            "select_optimizer": "adam",
+            "select_optimizer": "rmsprop",
             "lr": 1e-5
         },
 
@@ -122,14 +132,30 @@
 
     "trainer": {
         "text_trainer": {
-            "epochs": 24,
+            "epochs": 100,
             "is_save": true
         },
 
         "reinforce_trainer": {
-            "epochs": 3,
+            "epochs": 2,
             "batch_size": 600,
             "is_save": true
         }
+    },
+
+    "augment_instances": {
+        "select_policys": [
+            "policy14.pkl",
+            "policy15.pkl",
+            "policy17.pkl",
+            "policy18.pkl",
+            "policy19.pkl",
+            "policy20.pkl"
+        ],
+
+        "saved_names": [
+            "augment17",
+            "augment19"
+        ]
     }
 }

@@ -96,7 +96,7 @@ def get_sentence_from_text_field_tensors(
     return sentences
 
 
-def augment_and_add_instances_to_dataset(
+def augment_and_get_instances_from_dataset(
     dataset_reader: DatasetReader,
     dataset: AllennlpDataset,
     reinforcer
@@ -122,8 +122,6 @@ def augment_and_add_instances_to_dataset(
         )
         augment_instances.append(augment_instance)
 
-    # dataset.instances += augment_instances
-
     # return dataset
     return augment_instances
 
@@ -148,6 +146,35 @@ def get_synonyms_from_dataset(
             synonym_dict[token] = synonyms
 
     return synonym_dict
+
+
+def get_and_save_augmentation_sentence(
+    policy_weight_paths: List[str],
+    saved_names: List[str],
+    dataset_reader: DatasetReader,
+    train_dataset: AllennlpDataset,
+    reinforcer
+):
+    total_augment_instances = []
+
+    for policy_weight_path, saved_name in zip(policy_weight_paths, saved_names):
+        # Load pretrained_weight
+        reinforcer.policy.load_state_dict(torch.load(policy_weight_path))
+
+        # Get Augmented Sentence
+        augment_instances = augment_and_get_instances_from_dataset(
+            dataset_reader,
+            train_dataset,
+            reinforcer
+        )
+
+        # Save obj
+        save_obj(augment_instances, saved_name)
+
+        # Collect augmented instances
+        total_augment_instances += augment_instances
+
+    return total_augment_instances
 
 
 def save_obj(

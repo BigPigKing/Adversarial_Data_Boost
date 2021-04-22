@@ -13,13 +13,13 @@ from lib.trainer import TextTrainer, ReinforceTrainer
 from lib.augmenter import Augmenter, DeleteAugmenter, SwapAugmenter
 from lib.augmenter import IdentityAugmenter, InsertAugmenter, ReplaceAugmenter
 from lib.reinforcer import REINFORCER
-from lib.utils import add_wordnet_to_vocab, get_synonyms_from_dataset, load_obj
+from lib.utils import add_wordnet_to_vocab, get_synonyms_from_dataset, load_obj, get_and_save_augmentation_sentence
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from allennlp.data import allennlp_collate
 from allennlp.data.vocabulary import Vocabulary
-from allennlp.data.dataset_readers.dataset_reader import AllennlpDataset
+from allennlp.data.dataset_readers.dataset_reader import AllennlpDataset, DatasetReader
 from allennlp.modules.token_embedders import Embedding
 from allennlp.training.metrics.categorical_accuracy import CategoricalAccuracy
 
@@ -82,11 +82,13 @@ def set_and_get_embedder(
     vocab: Vocabulary
 ):
     if embedder_params["pretrained_embedding"] == "glove":
+        print("Loading pretrained weight for embedder ...")
         pretrained_embedding = Embedding(
             embedding_dim=embedder_params["glove"]["embedding_dim"],
             vocab=vocab,
-            padding_index=embedder_params["glove"]["padding_index"],
-            pretrained_file=embedder_params["glove"]["pretrained_filepath"]
+            pretrained_file=embedder_params["glove"]["pretrained_filepath"],
+            trainable=embedder_params["trainable"],
+            projection_dim=embedder_params["projection_dim"]
         )
 
         return TextEmbedder(pretrained_embedding=pretrained_embedding)
@@ -105,6 +107,8 @@ def set_and_get_encoder(
     )
 
     if encoder_params["pretrained_weight"] != "none":
+        print("Loading pretrained weight for encoder ...")
+
         encoder.load_state_dict(
             torch.load(
                 encoder_params["pretrained_weight"]
@@ -124,6 +128,8 @@ def set_and_get_classifier(
     # Instancelize ReLU
     if classifier_params["feedforward"]["activations"] == "relu":
         classifier_params["feedforward"]["activations"] = torch.nn.ReLU()
+    elif classifier_params["feedforward"]["activations"] == "silu":
+        classifier_params["feedforward"]["activations"] = torch.nn.SiLU()
     else:
         raise(KeyError)
 
@@ -132,6 +138,17 @@ def set_and_get_classifier(
         output_size=output_size,
         feedforward_params=classifier_params["feedforward"]
     )
+
+    if classifier_params["pretrained_weight"] != "none":
+        print("Loading pretrained weight for classifier ...")
+
+        classifier.load_state_dict(
+            torch.load(
+                classifier_params["pretrained_weight"]
+            )
+        )
+    else:
+        pass
 
     return classifier
 
@@ -151,6 +168,7 @@ def set_and_get_synonyms(
 def set_and_get_augmenters(
     augmenter_params: Dict,
     vocab: Vocabulary,
+    embedder: Embedding,
     synonyms: Dict
 ):
     # Delete
@@ -166,6 +184,7 @@ def set_and_get_augmenters(
     # Replace
     replace_augmenter = ReplaceAugmenter(
         vocab,
+        embedder,
         synonyms,
         augmenter_params["replace_augmenter"]
     )
@@ -173,6 +192,7 @@ def set_and_get_augmenters(
     # Insert
     insert_augmenter = InsertAugmenter(
         vocab,
+        embedder,
         synonyms,
         augmenter_params["insert_augmenter"]
     )
@@ -230,6 +250,14 @@ def set_and_get_reinforcer(
         reinforcer_params["REINFORCE"]
     )
 
+    if reinforcer_params["policy"]["pretrained_weight"] != "none":
+        print("Loading pretrained weight for policy ...")
+        reinforcer.policy.load_state_dict(
+            torch.load(
+                reinforcer_params["policy"]["pretrained_weight"]
+            )
+        )
+
     return reinforcer
 
 
@@ -254,6 +282,8 @@ def set_and_get_sentiment_model(
     # Optimize Declartion
     if sentiment_model_params["optimizer"]["select_optimizer"] == "adam":
         sentiment_model_params["optimizer"]["select_optimizer"] = torch.optim.Adam
+    if sentiment_model_params["optimizer"]["select_optimizer"] == "rmsprop":
+        sentiment_model_params["optimizer"]["select_optimizer"] = torch.optim.RMSprop
     else:
         raise(KeyError)
 
@@ -293,6 +323,36 @@ def set_and_get_reinforce_trainer(
     )
 
     return reinforce_trainer
+
+
+def set_and_save_augmented_sentences(
+    augmented_instances_params: Dict,
+    dataset_reader: DatasetReader,
+    train_ds: AllennlpDataset,
+    reinforcer: REINFORCER
+):
+    if augmented_instances_params["select_policys"] != "none":
+        get_and_save_augmentation_sentence(
+            augmented_instances_params["select_policys"],
+            augmented_instances_params["saved_names"],
+            dataset_reader,
+            train_ds,
+            reinforcer
+        )
+    else:
+        pass
+
+
+def get_augmented_instances(
+    augmented_instances_save_names: List
+):
+    total_augment_instances = []
+    for save_name in augmented_instances_save_names:
+        total_augment_instances += load_obj(save_name)
+
+    print(len(total_augment_instances))
+
+    return total_augment_instances
 
 
 def main(config_params):
@@ -345,6 +405,7 @@ def main(config_params):
     augmenters = set_and_get_augmenters(
         config_params["augmenter"],
         vocab,
+        embedder,
         synonyms
     )
 
@@ -390,26 +451,62 @@ def main(config_params):
     )
 
     # Sentiment Model Train
-    text_trainer.fit(
-        config_params["trainer"]["text_trainer"]["epochs"],
-        train_data_loader,
-        valid_data_loader,
-        test_data_loader
-    )
+    if config_params["env"]["IS_TRAIN_TEXT_CLASSIFIER"] is True:
+        text_trainer.fit(
+            config_params["trainer"]["text_trainer"]["epochs"],
+            train_data_loader,
+            valid_data_loader,
+            test_data_loader
+        )
+    else:
+        pass
 
     # Reinforce Model Train
-    train_data_loader = DataLoader(
-        train_ds,
-        batch_size=1,
-        shuffle=True,
-        collate_fn=allennlp_collate
-    )
+    if config_params["env"]["IS_TRAIN_REINFORCER"] is True:
+        train_data_loader = DataLoader(
+            train_ds,
+            batch_size=1,
+            shuffle=True,
+            collate_fn=allennlp_collate
+        )
 
-    reinforce_trainer.fit(
-        config_params["trainer"]["reinforce_trainer"]["epochs"],
-        config_params["trainer"]["reinforce_trainer"]["batch_size"],
-        train_data_loader
-    )
+        reinforce_trainer.fit(
+            config_params["trainer"]["reinforce_trainer"]["epochs"],
+            config_params["trainer"]["reinforce_trainer"]["batch_size"],
+            train_data_loader
+        )
+    else:
+        pass
+
+    # Generate Augmented Data
+    if config_params["env"]["IS_GENERATE_AUGMENTED_DATA"] is True:
+        set_and_save_augmented_sentences(
+            config_params["augment_instances"],
+            dataset_reader,
+            train_ds,
+            reinforcer
+        )
+    else:
+        pass
+
+    # FineTune with Augmented Data
+    if config_params["env"]["IS_AUGMENTED_DATA_FINETUNE"]:
+        augmented_instances = get_augmented_instances(config_params["augment_instances"]["saved_names"])
+        train_ds.instances += augmented_instances
+        train_data_loader = DataLoader(
+            train_ds,
+            batch_size=config_params["dataloader"]["batch_size"],
+            shuffle=config_params["dataloader"]["shuffle"],
+            collate_fn=allennlp_collate
+        )
+        text_trainer.fit(
+            config_params["trainer"]["text_trainer"]["epochs"],
+            train_data_loader,
+            valid_data_loader,
+            test_data_loader
+        )
+    else:
+        pass
 
 
 if __name__ == '__main__':

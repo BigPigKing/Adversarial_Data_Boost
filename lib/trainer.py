@@ -1,7 +1,6 @@
 import abc
 import torch
 
-from .utils import save_obj
 from tqdm import tqdm
 from typing import Dict
 from overrides import overrides
@@ -209,8 +208,8 @@ class TextTrainer(Trainer):
             print("----------------------------------------------")
 
         if self.is_save is True:
-            save_obj(self.train_model.encoder.state_dict(), "encoder")
-            save_obj(self.train_model.classifier.state_dict(), "classifier")
+            torch.save(self.train_model.encoder.state_dict(), "encoder.pkl")
+            torch.save(self.train_model.classifier.state_dict(), "classifier.pkl")
         else:
             pass
 

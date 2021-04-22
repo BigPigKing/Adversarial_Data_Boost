@@ -8,6 +8,7 @@ from typing import Dict
 from overrides import overrides
 from nltk.corpus import wordnet
 from allennlp.data import Vocabulary
+from allennlp.modules.token_embedders import Embedding
 
 
 class Augmenter(metaclass=abc.ABCMeta):
@@ -100,10 +101,13 @@ class ReplaceAugmenter(Augmenter):
     def __init__(
         self,
         vocab: Vocabulary,
+        embedding_layer: Embedding,
         synonym_dict: Dict,
         replace_augmenter_params: Dict
     ):
         super(ReplaceAugmenter, self).__init__(padded_idx=replace_augmenter_params["padded_idx"])
+        self.oov_idx = replace_augmenter_params["oov_idx"]
+        self.embedding_layer = embedding_layer
         self.magnitude = replace_augmenter_params["magnitude"]
         self.vocab = vocab
         self.synonym_dict = synonym_dict
@@ -169,6 +173,14 @@ class ReplaceAugmenter(Augmenter):
             for idx, synonym_token in enumerate(replace_synonym):
                 synonym_idx = self.vocab.get_token_index(synonym_token)
 
+                if synonym_idx == self.oov_idx:
+                    synonym_idx = self.vocab.add_token_to_namespace(synonym_token)
+                    self.embedding_layer.token_embedders["tokens"].extend_vocab(self.vocab)
+                    print("fuck")
+                    print(synonym_idx, synonym_token)
+                else:
+                    pass
+
                 if idx == 0:
                     augment_text_list[replace_idx] = synonym_idx
                 else:
@@ -183,11 +195,13 @@ class InsertAugmenter(ReplaceAugmenter):
     def __init__(
         self,
         vocab: Vocabulary,
+        embedding_layer: Embedding,
         synonym_dict: Dict,
         insert_augmenter_params: Dict
     ):
         super(InsertAugmenter, self).__init__(
             vocab,
+            embedding_layer,
             synonym_dict,
             insert_augmenter_params
         )
@@ -205,6 +219,13 @@ class InsertAugmenter(ReplaceAugmenter):
         if replace_synonym:
             for idx, synonym_token in enumerate(replace_synonym):
                 synonym_idx = self.vocab.get_token_index(synonym_token)
+
+                if synonym_idx == self.oov_idx:
+                    synonym_idx = self.vocab.add_token_to_namespace(synonym_token)
+                    self.embedding_layer.token_embedders["tokens"].extend_vocab(self.vocab)
+                else:
+                    pass
+
                 augment_text_list.insert(replace_idx + idx, synonym_idx)
         else:
             pass
