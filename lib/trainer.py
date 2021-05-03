@@ -20,14 +20,21 @@ class ReinforceTrainer(Trainer):
     def __init__(
         self,
         train_model: torch.nn.Module,
-        writer: SummaryWriter,
+        is_writer: bool = False,
         is_save: bool = False
     ):
         super(ReinforceTrainer, self).__init__()
         self.train_model = train_model
-        self.writer = writer
+
+        if is_writer:
+            self.writer = SummaryWriter()
+        else:
+            self.writer = None
+
         self.is_save = is_save
         self.record_step = 0
+
+        self.GPU = next(train_model.parameters()).get_device()
 
     def _record(
         self,
@@ -57,7 +64,11 @@ class ReinforceTrainer(Trainer):
 
         for episode_idx, episode in tqdm(enumerate(data_loader)):
             # feedforward and get loss
-            episode = move_to_device(episode, 0)
+            if self.GPU >= 0:
+                episode = move_to_device(episode, self.GPU)
+            else:
+                pass
+
             output_dict = self.train_model.forward(episode["tokens"])
 
             # update batch dict
@@ -73,7 +84,12 @@ class ReinforceTrainer(Trainer):
                 batch_output_dict["origin_sentences"] += output_dict["origin_sentence"]
                 batch_output_dict["augment_sentences"] += output_dict["augment_sentence"]
                 batch_output_dict["actions"] += output_dict["actions"]
-                self._record(self.record_step, batch_output_dict)
+
+                if self.writer is None:
+                    pass
+                else:
+                    self._record(self.record_step, batch_output_dict)
+
                 self.record_step += 1
 
                 # Optimize
@@ -90,7 +106,10 @@ class ReinforceTrainer(Trainer):
 
                 # Save
                 if self.is_save is True:
-                    torch.save(self.train_model.policy.state_dict(), "policy" + str(self.record_step) + ".pkl")
+                    torch.save(
+                        self.train_model.policy.state_dict(),
+                        "model_record/reinforce_model_weights/policy" + str(self.record_step) + ".pkl"
+                    )
 
     def fit(
         self,
@@ -113,6 +132,8 @@ class TextTrainer(Trainer):
         self.train_model = train_model
         self.is_save = is_save
 
+        self.GPU = next(train_model.parameters()).get_device()
+
     def _fit_valid(
         self,
         valid_data_loader: torch.utils.data.DataLoader
@@ -123,7 +144,11 @@ class TextTrainer(Trainer):
         total_predicts = []
 
         for batch_idx, batch in enumerate(valid_data_loader):
-            batch = move_to_device(batch, 0)
+            if self.GPU >= 0:
+                batch = move_to_device(batch, self.GPU)
+            else:
+                pass
+
             output_dict = self.train_model.forward(batch["tokens"], batch["label"])
 
             num_of_batch += 1
@@ -208,8 +233,9 @@ class TextTrainer(Trainer):
             print("----------------------------------------------")
 
         if self.is_save is True:
-            torch.save(self.train_model.encoder.state_dict(), "encoder.pkl")
-            torch.save(self.train_model.classifier.state_dict(), "classifier.pkl")
+            torch.save(self.train_model.embedder.state_dict(), "model_record/text_model_weights/embedder.pkl")
+            torch.save(self.train_model.encoder.state_dict(), "model_record/text_model_weights/encoder.pkl")
+            torch.save(self.train_model.classifier.state_dict(), "model_record/text_model_weights/classifier.pkl")
         else:
             pass
 

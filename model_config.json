@@ -7,10 +7,6 @@
         "IS_AUGMENTED_DATA_FINETUNE": true
     },
 
-    "synonyms": {
-        "synonyms_filepath": "none"
-    },
-
     "dataset": {
         "select_dataset": "sst",
         "sst": {
@@ -18,80 +14,85 @@
         }
     },
 
-    "dataloader": {
-        "batch_size": 200,
-        "shuffle": true
-    },
-
-    "embedder": {
-        "pretrained_embedding": "glove",
-        "glove": {
+    "text_model": {
+        "embedder": {
+            "pretrained_embedding": {
+                "embedding_dim": 300,
+                "pretrained_filepath": "pretrained_weight/glove.840B.300d.txt"
+            },
             "embedding_dim": 300,
-            "pretrained_filepath": "pretrained_weight/glove.840B.300d.txt"
+            "trainable": {
+                "trainable": true,
+                "projection_dim": 300
+            }
         },
-        "trainable": true,
-        "projection_dim": 300
-    },
-
-    "encoder": {
-        "pretrained_weight": "none",
-        "s2s_encoder": {
-            "hidden_size": 300,
-            "num_layers": 3,
-            "bidirectional": true
+        "encoder": {
+            "s2s_encoder": {
+                "hidden_size": 300,
+                "num_layers": 3,
+                "bidirectional": true
+            },
+            "s2v_encoder": {
+                "hidden_size": 300,
+                "num_layers": 3,
+                "bidirectional": true
+            }
         },
-        "s2v_encoder": {
-            "hidden_size": 300,
-            "num_layers": 3,
-            "bidirectional": true
-        }
-    },
-
-    "classifier": {
-        "pretrained_weight": "none",
-        "feedforward": {
-            "num_layers": 3,
-            "hidden_dims": [300, 150, 75],
-            "activations": "silu",
-            "dropout": 0.3
-        }
-    },
-
-    "augmenter": {
-        "select_idx": [0, 1, 2, 3],
-
-        "delete_augmenter": {
-            "padded_idx": 0,
-            "oov_idx": 1,
-            "magnitude": 0.1
+        "classifier": {
+            "feedforward": {
+                "num_layers": 3,
+                "hidden_dims": [300, 150, 75],
+                "activations": "silu",
+                "dropout": 0.3
+            }
         },
-
-        "swap_augmenter": {
-            "padded_idx": 0,
-            "oov_idx": 1,
-            "magnitude": 1
+        "optimizer": {
+            "select_optimizer": "rmsprop",
+            "lr": 1e-5
         },
-
-        "replace_augmenter": {
-            "padded_idx": 0,
-            "oov_idx": 1,
-            "magnitude": 1
+        "scheduler": {
+            "select_scheduler": "none"
         },
-
-        "insert_augmenter": {
-            "padded_idx": 0,
-            "oov_idx": 1,
-            "magnitude": 1
-        }
+        "criterions": {
+            "classification_criterion": "cross_entropy",
+            "contrastive_criterion": "consine_embedding"
+        },
+        "evaluation": "categorical"
     },
 
     "reinforcer": {
-        "env": {
+        "environment": {
             "similarity_threshold": 0.90
         },
 
+        "augmenter": {
+            "synonyms": {
+                "synonyms_filepath": null
+            },
+            "select_augmenter": [0, 1, 2, 3],
+            "delete_augmenter": {
+                "padded_idx": 0,
+                "oov_idx": 0,
+                "magnitude": 0.1
+            },
+            "swap_augmenter": {
+                "padded_idx": 0,
+                "oov_idx": 0,
+                "magnitude": 1
+            },
+            "replace_augmenter": {
+                "padded_idx": 0,
+                "oov_idx": 0,
+                "magnitude": 1
+            },
+            "insert_augmenter": {
+                "padded_idx": 0,
+                "oov_idx": 0,
+                "magnitude": 1
+            }
+        },
+
         "policy": {
-            "pretrained_weight": "none",
             "feedforward": {
                 "num_layers": 3,
                 "hidden_dims": [64, 32],
@@ -112,50 +113,144 @@
         }
     },
 
-    "sentiment_model": {
-        "optimizer": {
-            "select_optimizer": "rmsprop",
-            "lr": 1e-5
+    "train_mode": {
+        "select_mode": 2,
+        "0": {
+            "text_trainer": {
+                "dataloader": {
+                    "batch_size": 600,
+                    "shuffle": true
+                },
+                "epochs": 36,
+                "is_save": true
+            },
+            "reinforce_trainer": {
+                "dataloader": {
+                    "shuffle": false
+                },
+                "epochs": 2,
+                "is_save": true,
+                "is_writer": true,
+                "batch_size": 600
+            },
+            "augmented_instance_generator": {
+                "select_policy": [
+                    "model_record/reinforce_model_weights/policy10",
+                    "model_record/reinforce_model_weights/policy11",
+                    "model_record/reinforce_model_weights/policy12"
+                ],
+                "save_name": [
+                    "model_record/augments/augment10",
+                    "model_record/augments/augment11",
+                    "model_record/augments/augment12"
+                ]
+            },
+            "text_finetuner": {
+                "dataloader": {
+                    "batch_size": 600,
+                    "shuffle": true
+                },
+                "epochs": 24,
+                "is_save": false,
+                "augmented_instance": [
+                    "model_record/augments/augment10",
+                    "model_record/augments/augment11",
+                    "model_record/augments/augment12"
+                ]
+            }
         },
-
-        "scheduler": {
-            "select_scheduler": "none"
+        "1": {
+            "pretrained_text_model": {
+                "embedder": "model_record/text_model_weights/embedder.pkl",
+                "encoder": "model_record/text_model_weights/encoder.pkl",
+                "classifier": "model_record/text_model_weights/classifier.pkl"
+            },
+            "reinforce_trainer": {
+                "dataloader": {
+                    "shuffle": false
+                },
+                "epochs": 2,
+                "is_save": true,
+                "is_writer": true,
+                "batch_size": 600
+            },
+            "augmented_instance_generator": {
+                "select_policy": [
+                    "policy10",
+                    "policy11",
+                    "policy12"
+                ],
+                "save_name": [
+                    "model_record/augments/augment10",
+                    "model_record/augments/augment11",
+                    "model_record/augments/augment12"
+                ]
+            },
+            "text_finetuner": {
+                "dataloader": {
+                    "batch_size": 600,
+                    "shuffle": true
+                },
+                "epochs": 24,
+                "is_save": false,
+                "augmented_instance": [
+                    "model_record/augments/augment10",
+                    "model_record/augments/augment11",
+                    "model_record/augments/augment12"
+                ]
+            }
         },
-
-        "criterions": {
-            "classification_criterion": "cross_entropy",
-            "contrastive_criterion": "consine_embedding"
+        "2": {
+            "pretrained_text_model": {
+                "embedder": "model_record/text_model_weights/embedder.pkl",
+                "encoder": "model_record/text_model_weights/encoder.pkl",
+                "classifier": "model_record/text_model_weights/classifier.pkl"
+            },
+            "augmented_instance_generator": {
+                "select_policy": [
+                    "model_record/reinforce_model_weights/policy10",
+                    "model_record/reinforce_model_weights/policy11",
+                    "model_record/reinforce_model_weights/policy12"
+                ],
+                "save_name": [
+                    "model_record/augments/augment10",
+                    "model_record/augments/augment11",
+                    "model_record/augments/augment12"
+                ]
+            },
+            "text_finetuner": {
+                "dataloader": {
+                    "batch_size": 600,
+                    "shuffle": true
+                },
+                "epochs": 24,
+                "is_save": false,
+                "augmented_instance": [
+                    "model_record/augments/augment10",
+                    "model_record/augments/augment11",
+                    "model_record/augments/augment12"
+                ]
+            }
         },
-
-        "evaluation": "categorical"
-    },
-
-    "trainer": {
-        "text_trainer": {
-            "epochs": 100,
-            "is_save": true
-        },
-
-        "reinforce_trainer": {
-            "epochs": 2,
-            "batch_size": 600,
-            "is_save": true
+        "3": {
+            "pretrained_text_model": {
+                "embedder": "model_record/text_model_weights/embedder.pkl",
+                "encoder": "model_record/text_model_weights/encoder.pkl",
+                "classifier": "model_record/text_model_weights/classifier.pkl"
+            },
+            "text_finetuner": {
+                "dataloader": {
+                    "batch_size": 600,
+                    "shuffle": true
+                },
+                "epochs": 24,
+                "is_save": false,
+                "augmented_instance": [
+                    "model_record/augments/augment10",
+                    "model_record/augments/augment11",
+                    "model_record/augments/augment12"
+                ]
+            }
         }
-    },
-
-    "augment_instances": {
-        "select_policys": [
-            "policy14.pkl",
-            "policy15.pkl",
-            "policy17.pkl",
-            "policy18.pkl",
-            "policy19.pkl",
-            "policy20.pkl"
-        ],
-
-        "saved_names": [
-            "augment17",
-            "augment19"
-        ]
     }
 }

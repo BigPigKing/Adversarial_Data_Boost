@@ -159,7 +159,7 @@ def get_and_save_augmentation_sentence(
 
     for policy_weight_path, saved_name in zip(policy_weight_paths, saved_names):
         # Load pretrained_weight
-        reinforcer.policy.load_state_dict(torch.load(policy_weight_path))
+        reinforcer.policy.load_state_dict(torch.load(policy_weight_path + ".pkl"))
 
         # Get Augmented Sentence
         augment_instances = augment_and_get_instances_from_dataset(

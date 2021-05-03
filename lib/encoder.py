@@ -21,6 +21,8 @@ class TextEncoder(torch.nn.Module):
             bidirectional=s2s_encoder_params["bidirectional"]
         )
 
+        layer_norm_1 = torch.nn.LayerNorm(s2s_encoder.get_output_dim())
+
         s2v_encoder = GruSeq2VecEncoder(
             input_size=s2s_encoder.get_output_dim(),
             hidden_size=s2v_encoder_params["hidden_size"],
@@ -28,7 +30,9 @@ class TextEncoder(torch.nn.Module):
             bidirectional=s2v_encoder_params["bidirectional"]
         )
 
-        self.encoders = torch.nn.ModuleList([s2s_encoder, s2v_encoder])
+        layer_norm_2 = torch.nn.LayerNorm(s2v_encoder.get_output_dim())
+
+        self.encoders = torch.nn.ModuleList([s2s_encoder, layer_norm_1, s2v_encoder, layer_norm_2])
 
     def forward(
         self,
@@ -37,12 +41,15 @@ class TextEncoder(torch.nn.Module):
     ):
         # Iterate over encoder to produce encoding X
         for encoder in self.encoders:
-            embed_X = encoder(embed_X, tokens_mask)
+            if type(encoder) == torch.nn.LayerNorm:
+                embed_X = encoder(embed_X)
+            else:
+                embed_X = encoder(embed_X, tokens_mask)
 
         return embed_X
 
     def get_output_dim(self) -> int:
-        return self.encoders[-1].get_output_dim()
+        return self.encoders[-2].get_output_dim()
 
 
 def main():

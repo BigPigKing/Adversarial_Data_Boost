@@ -1,6 +1,5 @@
 import torch
 
-from .reinforcer import REINFORCER
 from typing import Dict
 from overrides import overrides
 from allennlp.data.vocabulary import Vocabulary
@@ -14,7 +13,6 @@ class SentimentModel(torch.nn.Module):
         embedder: torch.nn.Module,
         encoder: torch.nn.ModuleList,
         classifier: torch.nn.ModuleList,
-        reinforcer: REINFORCER,
         sentiment_model_params: Dict
     ):
         super(SentimentModel, self).__init__()
@@ -38,15 +36,13 @@ class SentimentModel(torch.nn.Module):
 
         # Scheduler inititailzation
         if sentiment_model_params["scheduler"]["select_scheduler"] != "none":
-            self.scheduler = sentiment_model_params["scheduler"]["select_scheduler"](self.optimizer)
+            # self.scheduler = sentiment_model_params["scheduler"]["select_scheduler"](self.optimizer)
+            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, "min")
         else:
             self.scheduler = None
 
         # Evaluate initialization
         self.accuracy = sentiment_model_params["evaluation"]
-
-        # Reinforcer initialization
-        self.reinforcer = reinforcer
 
     @overrides
     def forward(
