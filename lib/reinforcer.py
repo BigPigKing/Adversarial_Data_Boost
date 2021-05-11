@@ -300,12 +300,14 @@ class REINFORCER(torch.nn.Module):
     @overrides
     def forward(
         self,
-        wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]]
+        episode: Dict[str, torch.Tensor]
     ):
         """
         forward: get loss(output dict) from currenet episode(currenet sentence)
         """
         output_dict = {}
+
+        wrapped_token_of_sent = episode["tokens"]
 
         state = self.env.reset(wrapped_token_of_sent)
         log_probs = []

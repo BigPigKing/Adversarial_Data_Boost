@@ -3,7 +3,7 @@ import torch
 
 from typing import Dict, List
 
-from lib.dataset import get_sst_ds
+from lib.dataset import get_sst_ds, get_yelp_ds
 from lib.embedder import TextEmbedder
 from lib.encoder import TextEncoder
 from lib.classifier import TextClassifier
@@ -36,7 +36,8 @@ def set_and_get_dataset(
 ) -> Dict:
     if dataset_params["select_dataset"] == "sst":
         train_ds, valid_ds, test_ds, dataset_reader = get_sst_ds(
-            granularity=dataset_params["sst"]["granularity"]
+            granularity=dataset_params["sst"]["granularity"],
+            train_data_proportion=dataset_params["sst"]["proportion"]
         )
 
         return {
@@ -45,6 +46,18 @@ def set_and_get_dataset(
             "test_ds": test_ds,
             "dataset_reader": dataset_reader
         }
+    elif dataset_params["select_dataset"] == "yelp":
+        train_ds, valid_ds, test_ds, dataset_reader = get_yelp_ds(
+            train_data_proportion=dataset_params["yelp"]["proportion"]
+        )
+
+        return {
+            "train_ds": train_ds,
+            "valid_ds": valid_ds,
+            "test_ds": test_ds,
+            "dataset_reader": dataset_reader
+        }
+
     else:
         raise(KeyError)
 
@@ -113,7 +126,9 @@ def set_and_get_text_model(
 
     # Set and get text model
     # Instanize Criterions
-    text_model_params["criterions"]["classification_criterion"] = torch.nn.CrossEntropyLoss()
+    text_model_params["criterions"]["classification_criterion"] = torch.nn.CrossEntropyLoss(
+        reduction="none"
+    )
     text_model_params["criterions"]["contrastive_criterion"] = torch.nn.CosineEmbeddingLoss()
 
     # Instanize Evaluation

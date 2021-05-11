@@ -1,4 +1,6 @@
+import csv
 import logging
+import numpy as np
 
 from typing import Dict, List, Optional, Union
 from overrides import overrides
@@ -9,9 +11,71 @@ from allennlp.common.checks import ConfigurationError
 from allennlp.data import DatasetReader, Instance
 from allennlp.data.tokenizers import Tokenizer, SpacyTokenizer, Token
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
-from allennlp.data.fields import LabelField, TextField, Field
+from allennlp.data.fields import LabelField, TextField, Field, MetadataField
 
 logger = logging.getLogger(__name__)
+
+
+class YelpReviewDatasetReader(DatasetReader):
+    def __init__(
+        self,
+        token_indexers: Dict[str, TokenIndexer] = None,
+        tokenizer: Optional[Tokenizer] = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
+        self._tokenizer = tokenizer or SpacyTokenizer(split_on_spaces=True)
+
+    @overrides
+    def _read(self, file_path):
+        with open(file_path, "r") as data_file:
+            reader = csv.reader(data_file, delimiter=",")
+
+            for i, line in enumerate(reader):
+                review = line[1]
+                label = line[0]
+                instance = self.text_to_instance(review, label)
+
+                if instance is not None:
+                    yield instance
+                else:
+                    pass
+
+    @overrides
+    def text_to_instance(self, review: str, sentiment: str = None) -> Optional[Instance]:
+        """
+        We take `pre-tokenized` input here, because we might not have a tokenizer in this class.
+        # Parameters
+        tokens : `List[str]`, required.
+            The tokens in a given sentence.
+        sentiment : `str`, optional, (default = `None`).
+            The sentiment for this sentence.
+        # Returns
+        An `Instance` containing the following fields:
+            tokens : `TextField`
+                The tokens in the sentence or phrase.
+            label : `LabelField`
+                The sentiment label of the sentence or phrase.
+        """
+        assert isinstance(
+            review, str
+        )
+
+        tokens = self._tokenizer.tokenize(review)
+
+        text_field = TextField(tokens, token_indexers=self._token_indexers)
+        label_field = LabelField(sentiment)
+
+        fields: Dict[str, Field] = {
+            "tokens": text_field,
+            "label": label_field
+        }
+
+        return Instance(fields)
+
+    def get_token_indexers(self):
+        return self._token_indexers
 
 
 @DatasetReader.register("sst_tokens")
@@ -84,7 +148,12 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                         yield instance
 
     @overrides
-    def text_to_instance(self, tokens: List[str], sentiment: str = None) -> Optional[Instance]:
+    def text_to_instance(
+        self,
+        tokens: List[str],
+        sentiment: str = None,
+        augment: int = 1
+    ) -> Optional[Instance]:
         """
         We take `pre-tokenized` input here, because we might not have a tokenizer in this class.
         # Parameters
@@ -133,6 +202,13 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                 else:
                     sentiment = "1"
             fields["label"] = LabelField(sentiment)
+
+        augment_field = MetadataField(
+            augment
+        )
+
+        fields["augment"] = augment_field
+
         return Instance(fields)
 
     def get_token_indexers(self):
@@ -143,20 +219,64 @@ def get_sst_ds(
     train_data_path="data/sst/train.txt",
     valid_data_path="data/sst/dev.txt",
     test_data_path="data/sst/test.txt",
+    train_data_proportion=1,
     granularity="2-class"
 ):
     sst_dataset_reader = StanfordSentimentTreeBankDatasetReader(granularity=granularity)
-    train_ds = sst_dataset_reader.read(train_data_path)
+
+    if train_data_proportion != 1:
+        train_ds = sst_dataset_reader.read(train_data_path + str(train_data_proportion))
+    else:
+        train_ds = sst_dataset_reader.read(train_data_path + str(train_data_proportion))
     valid_ds = sst_dataset_reader.read(valid_data_path)
     test_ds = sst_dataset_reader.read(test_data_path)
 
     return train_ds, valid_ds, test_ds, sst_dataset_reader
 
 
-def main():
-    agnews_dataset_reader = AGNewsDatasetReader()
-    train_ds = agnews_dataset_reader("../data/agnews/train.csv")
+def get_yelp_ds(
+    train_data_path="data/yelp_review_full/train.csv",
+    valid_data_path="data/yelp_review_full/valid.csv",
+    test_data_path="data/yelp_review_full/test.csv",
+    train_data_proportion=1
+):
+    yelp_dataset_reader = YelpReviewDatasetReader()
+    train_ds = yelp_dataset_reader.read(train_data_path)
+    valid_ds = yelp_dataset_reader.read(valid_data_path)
+    test_ds = yelp_dataset_reader.read(test_data_path)
 
+    return train_ds, valid_ds, test_ds, yelp_dataset_reader
+
+
+def split_proportion_csv(
+    file_path,
+    output_path,
+    proportion,
+    delimiter=","
+):
+    from sklearn.model_selection import train_test_split
+
+    with open(file_path, 'r') as f:
+        lines = f.read().splitlines()
+
+    train, test = train_test_split(lines, train_size=proportion)
+
+    with open(file_path + str(proportion), 'w+') as f:
+        for line in train:
+            f.write(line+delimiter)
+
+
+def main():
+    sst_path = "../data/sst/train.txt"
+    sst_dir_path = "../data/sst/"
+
+    for proportion in np.arange(0.1, 1, 0.1):
+        split_proportion_csv(
+            sst_path,
+            sst_dir_path,
+            proportion,
+            delimiter='\n'
+        )
 
 
 if __name__ == '__main__':

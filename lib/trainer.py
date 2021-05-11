@@ -69,7 +69,7 @@ class ReinforceTrainer(Trainer):
             else:
                 pass
 
-            output_dict = self.train_model.forward(episode["tokens"])
+            output_dict = self.train_model.forward(episode)
 
             # update batch dict
             batch_output_dict["loss"] += output_dict["loss"]
@@ -149,7 +149,7 @@ class TextTrainer(Trainer):
             else:
                 pass
 
-            output_dict = self.train_model.forward(batch["tokens"], batch["label"])
+            output_dict = self.train_model.forward(batch)
 
             num_of_batch += 1
             total_labels.append(batch["label"])
@@ -175,7 +175,7 @@ class TextTrainer(Trainer):
 
         for batch_idx, batch in enumerate(tqdm(train_data_loader)):
             batch = move_to_device(batch, 0)
-            output_dict = self.train_model.forward(batch["tokens"], batch["label"])
+            output_dict = self.train_model.forward(batch)
 
             # Optimize
             self.train_model.optimize(

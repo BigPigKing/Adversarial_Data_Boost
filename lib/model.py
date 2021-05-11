@@ -13,7 +13,8 @@ class SentimentModel(torch.nn.Module):
         embedder: torch.nn.Module,
         encoder: torch.nn.ModuleList,
         classifier: torch.nn.ModuleList,
-        sentiment_model_params: Dict
+        sentiment_model_params: Dict,
+        is_finetune: bool = False
     ):
         super(SentimentModel, self).__init__()
         # Model Augmenter
@@ -44,13 +45,18 @@ class SentimentModel(torch.nn.Module):
         # Evaluate initialization
         self.accuracy = sentiment_model_params["evaluation"]
 
+        self.is_finetune = is_finetune
+
     @overrides
     def forward(
         self,
-        token_X,
-        label_Y,
+        batch: Dict[str, torch.Tensor]
     ) -> Dict:
         output_dict = {}
+
+        # Get input from dict
+        token_X = batch["tokens"]
+        label_Y = batch["label"]
 
         # Embedded first
         embed_X = self.embedder(token_X)
@@ -62,9 +68,21 @@ class SentimentModel(torch.nn.Module):
         encode_X = self.encoder(embed_X, tokens_mask)
 
         # Classfiy
-        pred_Y = self.classifier(encode_X)
+        if self.is_finetune:
+            pred_Y = self.classifier(encode_X.detach())
+        else:
+            pred_Y = self.classifier(encode_X)
 
-        classification_loss = self.classification_criterion(pred_Y, label_Y)
+        # Get all the loss
+        classification_loss = self.classification_criterion(
+            pred_Y,
+            label_Y
+        )
+
+        # Weighted the loss of augmented data
+        batch["augment"] = torch.tensor(batch["augment"]).to(classification_loss.get_device())
+        classification_loss = torch.mean(classification_loss * batch["augment"])
+
         output_dict["classification_loss"] = classification_loss
         output_dict["predicts"] = torch.argmax(pred_Y, dim=1)
 

@@ -118,7 +118,8 @@ def augment_and_get_instances_from_dataset(
             reinforcer.vocab.get_token_from_index(
                 episode["label"].int().item(),
                 namespace="labels"
-            )
+            ),
+            augment=reinforcer.env.similarity_threshold
         )
         augment_instances.append(augment_instance)
 
