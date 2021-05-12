@@ -174,7 +174,11 @@ class TextTrainer(Trainer):
         total_predicts = []
 
         for batch_idx, batch in enumerate(tqdm(train_data_loader)):
-            batch = move_to_device(batch, 0)
+            if self.GPU >= 0:
+                batch = move_to_device(batch, self.GPU)
+            else:
+                pass
+
             output_dict = self.train_model.forward(batch)
 
             # Optimize

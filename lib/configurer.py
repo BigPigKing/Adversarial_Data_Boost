@@ -13,6 +13,7 @@ from lib.augmenter import DeleteAugmenter, SwapAugmenter
 from lib.augmenter import IdentityAugmenter, InsertAugmenter, ReplaceAugmenter
 from lib.reinforcer import REINFORCER
 from lib.utils import get_synonyms_from_dataset, load_obj, get_and_save_augmentation_sentence, add_wordnet_to_vocab
+from lib.visualizer import TSNEVisualizer
 
 from torch.utils.data import DataLoader
 from allennlp.data import allennlp_collate
@@ -400,3 +401,18 @@ def get_augmented_instances(
         total_augment_instances += load_obj(save_name)
 
     return total_augment_instances
+
+
+def set_and_get_visualizer(
+    visualizer_params: Dict,
+    text_model: SentimentModel,
+    vocab: Vocabulary
+):
+    visualizer = TSNEVisualizer(
+        visualizer_params,
+        text_model.embedder,
+        text_model.encoder,
+        vocab
+    )
+
+    return visualizer

@@ -3,7 +3,7 @@ import torch
 from typing import Dict
 from lib.configurer import get_config_params
 from lib.configurer import set_and_get_dataset, set_and_get_vocab
-from lib.configurer import set_and_get_text_model, set_and_get_reinforcer
+from lib.configurer import set_and_get_text_model, set_and_get_reinforcer, set_and_get_visualizer
 from lib.configurer import set_and_get_text_trainer, set_and_get_reinforce_trainer
 from lib.configurer import set_and_get_text_dataloader, set_and_get_reinforce_dataloader
 from lib.configurer import set_and_save_augmented_sentences, get_augmented_instances
@@ -213,11 +213,11 @@ def all_procedure_with_all_pretrained(
         reinforcer
     )
 
-    finetune_text_model(
-        mode_params,
-        dataset_dict,
-        text_model
-    )
+    # finetune_text_model(
+    #     mode_params,
+    #     dataset_dict,
+    #     text_model
+    # )
 
 
 def finetune_procedure(
@@ -235,6 +235,34 @@ def finetune_procedure(
         mode_params,
         dataset_dict,
         text_model
+    )
+
+
+def visualize_procedure(
+    mode_params: Dict,
+    dataset_dict: Dict,
+    text_model: torch.nn.Module,
+    visualizer: torch.nn.Module
+):
+    load_pretrained_text_model(
+        mode_params,
+        text_model
+    )
+
+    # Set pretrained embedding to visualizer
+    visualizer.enmbedder = text_model.embedder
+    visualizer.encoder = text_model.encoder
+    del text_model
+
+    # get the augmented data to the dataset
+    augmented_instances = get_augmented_instances(
+        mode_params["augmented_instance"]
+    )
+    dataset_dict["train_ds"].instances += augmented_instances
+
+    # Visualize
+    visualizer.visualize(
+        dataset_dict["train_ds"]
     )
 
 
@@ -299,6 +327,18 @@ def main(config_params):
             dataset_dict,
             text_model,
             reinforcer
+        )
+    elif config_params["train_mode"]["select_mode"] == 4:
+        visualizer = set_and_get_visualizer(
+            config_params["visualizer"],
+            text_model,
+            vocab
+        )
+        visualize_procedure(
+            config_params["train_mode"]["4"],
+            dataset_dict,
+            text_model,
+            visualizer
         )
     else:
         raise ValueError

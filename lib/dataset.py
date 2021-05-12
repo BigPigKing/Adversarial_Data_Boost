@@ -227,7 +227,7 @@ def get_sst_ds(
     if train_data_proportion != 1:
         train_ds = sst_dataset_reader.read(train_data_path + str(train_data_proportion))
     else:
-        train_ds = sst_dataset_reader.read(train_data_path + str(train_data_proportion))
+        train_ds = sst_dataset_reader.read(train_data_path)
     valid_ds = sst_dataset_reader.read(valid_data_path)
     test_ds = sst_dataset_reader.read(test_data_path)
 
