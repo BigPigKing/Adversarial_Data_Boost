@@ -262,6 +262,7 @@ def visualize_procedure(
 
     # Visualize
     visualizer.visualize(
+        mode_params["visualizer"],
         dataset_dict["train_ds"]
     )
 

@@ -81,7 +81,7 @@ class SentimentModel(torch.nn.Module):
 
         # Weighted the loss of augmented data
         batch["augment"] = torch.tensor(batch["augment"]).to(classification_loss.get_device())
-        classification_loss = torch.mean(classification_loss * batch["augment"])
+        classification_loss = torch.mean(classification_loss)
 
         output_dict["classification_loss"] = classification_loss
         output_dict["predicts"] = torch.argmax(pred_Y, dim=1)

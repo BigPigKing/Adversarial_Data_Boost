@@ -1,7 +1,9 @@
 import json
 import torch
+import torch.multiprocessing as mp
 
 from typing import Dict, List
+from itertools import repeat
 
 from lib.dataset import get_sst_ds, get_yelp_ds
 from lib.embedder import TextEmbedder
@@ -382,13 +384,55 @@ def set_and_save_augmented_sentences(
     reinforcer: REINFORCER
 ):
     if augmented_instances_params["select_policy"] != "none":
-        get_and_save_augmentation_sentence(
-            augmented_instances_params["select_policy"],
-            augmented_instances_params["save_name"],
-            dataset_reader,
-            train_ds,
-            reinforcer
-        )
+        if augmented_instances_params["num_processor"] == 1:
+            get_and_save_augmentation_sentence(
+                augmented_instances_params["select_policy"],
+                augmented_instances_params["save_name"],
+                dataset_reader,
+                train_ds,
+                reinforcer
+            )
+        elif augmented_instances_params["num_processor"] > 1:
+            try:
+                mp.set_start_method('spawn', force=True)
+            except RuntimeError:
+                raise RuntimeError
+
+            pool = mp.Pool(augmented_instances_params["num_processor"])
+
+            n = len(augmented_instances_params["select_policy"]) // augmented_instances_params["num_processor"]
+
+            policy_args = [
+                augmented_instances_params["select_policy"][i: i+n]
+                for i in range(
+                    0,
+                    len(augmented_instances_params["select_policy"]),
+                    n
+                )
+            ]
+
+            save_name_args = [
+                augmented_instances_params["save_name"][i: i+n]
+                for i in range(
+                    0,
+                    len(augmented_instances_params["save_name"]),
+                    n
+                )
+            ]
+
+            with pool as p:
+                p.starmap(
+                    get_and_save_augmentation_sentence,
+                    zip(
+                        policy_args,
+                        save_name_args,
+                        repeat(dataset_reader),
+                        repeat(train_ds),
+                        repeat(reinforcer)
+                    )
+                )
+        else:
+            raise ValueError("Wrong number of the processor")
     else:
         pass
 

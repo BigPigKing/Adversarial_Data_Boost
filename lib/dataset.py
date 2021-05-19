@@ -152,6 +152,7 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
         self,
         tokens: List[str],
         sentiment: str = None,
+        is_augment: bool = False,
         augment: int = 1
     ) -> Optional[Instance]:
         """
@@ -186,22 +187,27 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
             tokens = self._tokenizer.tokenize(" ".join(tokens))
         text_field = TextField(tokens, token_indexers=self._token_indexers)
         fields: Dict[str, Field] = {"tokens": text_field}
-        if sentiment is not None:
-            if self._granularity == "3-class":
-                if int(sentiment) < 2:
-                    sentiment = "0"
-                elif int(sentiment) == 2:
-                    sentiment = "1"
-                else:
-                    sentiment = "2"
-            elif self._granularity == "2-class":
-                if int(sentiment) < 2:
-                    sentiment = "0"
-                elif int(sentiment) == 2:
-                    return None
-                else:
-                    sentiment = "1"
-            fields["label"] = LabelField(sentiment)
+
+        if is_augment is False:
+            if sentiment is not None:
+                if self._granularity == "3-class":
+                    if int(sentiment) < 2:
+                        sentiment = "0"
+                    elif int(sentiment) == 2:
+                        sentiment = "1"
+                    else:
+                        sentiment = "2"
+                elif self._granularity == "2-class":
+                    if int(sentiment) < 2:
+                        sentiment = "0"
+                    elif int(sentiment) == 2:
+                        return None
+                    else:
+                        sentiment = "1"
+                fields["label"] = LabelField(sentiment)
+        else:
+            if sentiment is not None:
+                fields["label"] = LabelField(sentiment)
 
         augment_field = MetadataField(
             augment

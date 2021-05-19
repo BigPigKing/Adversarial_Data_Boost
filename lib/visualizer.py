@@ -52,13 +52,17 @@ class TSNEVisualizer(visualizer):
         self.encoder = encoder
         self.vocab = vocab
         self.col_names = visualizer_params["col_names"]
-        self.reducer = TSNE(
-            n_components=visualizer_params["n_components"],
-            perplexity=visualizer_params["perplexity"],
-            n_iter=visualizer_params["n_iter"],
-            verbose=visualizer_params["verbose"]
-        )
+        self.reducers = [
+            TSNE(
+                n_components=visualizer_params["n_components"],
+                perplexity=perplexity,
+                n_iter=visualizer_params["n_iter"],
+                verbose=visualizer_params["verbose"],
+                init="pca"
+            ) for perplexity in visualizer_params["perplexity"]
+        ]
         self.save_fig_path = visualizer_params["save_fig_path"] + "fig"
+        self.GPU = next(encoder.parameters()).get_device()
 
     @overrides
     def _encode(
@@ -75,24 +79,19 @@ class TSNEVisualizer(visualizer):
     @overrides
     def _reduce_dim(
         self,
+        reducer: TSNE,
         encode_X: torch.Tensor
     ):
-        return self.reducer.fit_transform(
+        return reducer.fit_transform(
             encode_X
         )
 
     def _get_plot_df(
         self,
         total_X: np.ndarray,
-        total_Y: np.ndarray,
-        total_Z: np.ndarray
+        origin_Y: np.ndarray,
+        augment_Y: np.ndarray,
     ):
-        # total_Z responsible for indexing, 1 means the original data
-        total_Z = total_Z == 1
-
-        # First the orignal one
-        origin_X = total_X[total_Z]
-        origin_Y = total_Y[total_Z]
         origin_Y = np.array(
             list(
                 map(
@@ -104,10 +103,6 @@ class TSNEVisualizer(visualizer):
                 )
             )
         )
-
-        # Then the augment one
-        augment_X = total_X[~total_Z]
-        augment_Y = total_Y[~total_Z]
         augment_Y = np.array(
             list(
                 map(
@@ -121,13 +116,11 @@ class TSNEVisualizer(visualizer):
         )
 
         # Union
-        union_X = np.vstack([origin_X, augment_X])
-        del origin_X, augment_X
         union_Y = np.concatenate([origin_Y, augment_Y])
         union_Y = union_Y.reshape([union_Y.shape[0], 1])
         del origin_Y, augment_Y
-        union_arr = np.hstack([union_X, union_Y])
-        del union_X, union_Y
+        union_arr = np.hstack([total_X, union_Y])
+        del total_X, union_Y
 
         # Get Df
         plot_df = pd.DataFrame(
@@ -145,58 +138,91 @@ class TSNEVisualizer(visualizer):
     def _visualize(
         self,
         total_X: np.ndarray,
-        total_Y: np.ndarray,
-        total_Z: np.ndarray
+        origin_Y: np.ndarray,
+        augment_Y: np.ndarray,
+        reducer: TSNE
     ):
         plot_df = self._get_plot_df(
             total_X,
-            total_Y,
-            total_Z
+            origin_Y,
+            augment_Y,
         )
 
-        plot_df = plot_df.sample(frac=0.1)
+        palette = sns.color_palette("Paired")
+        palette = [
+            palette[1],
+            palette[0],
+            palette[5],
+            palette[4]
+        ]
 
         sns.scatterplot(
             data=plot_df,
             x=self.col_names[0],
             y=self.col_names[1],
+            size=self.col_names[2],
+            size_order=list(plot_df[self.col_names[2]].unique()).sort(),
+            sizes=[30, 15, 30, 15],
             hue=self.col_names[2],
             hue_order=list(plot_df[self.col_names[2]].unique()).sort(),
             style=self.col_names[2],
             style_order=list(plot_df[self.col_names[2]].unique()).sort(),
             legend="full",
-            palette=sns.color_palette(
-                "hls",
-                plot_df[self.col_names[2]].nunique()
-            ),
+            palette=palette,
             alpha=1,
-            s=15
+            s=30
         )
 
         plt.savefig(
-            self.save_fig_path,
+            self.save_fig_path + '_' + str(reducer.perplexity) + '_' + str(reducer.n_iter),
             dpi=1200
         )
+        plt.close()
 
-    @overrides
-    def visualize(
+    def _get_sample_array(
         self,
-        ds: AllennlpDataset,
-        batch_size: int = 1200
+        total_X: np.ndarray,
+        total_Y: np.ndarray,
+        total_Z: np.ndarray,
+        proportion: float
     ):
-        dataloader = DataLoader(
-            ds,
-            batch_size=batch_size,
-            shuffle=False,
-            collate_fn=allennlp_collate
+        # total_Z responsible for indexing, 1 means the original data
+        total_Z = total_Z == 1
+
+        origin_X = total_X[total_Z]
+        origin_Y = total_Y[total_Z]
+        augment_X = total_X[~total_Z]
+        augment_Y = total_Y[~total_Z]
+
+        origin_idx = np.random.choice(
+            origin_X.shape[0],
+            int(origin_X.shape[0] * proportion),
+            replace=False
         )
 
+        augment_idx = np.random.choice(
+            augment_X.shape[0],
+            int(augment_X.shape[0] * proportion),
+            replace=False
+        )
+
+        return origin_X[origin_idx, :], origin_Y[origin_idx], augment_X[augment_idx, :], augment_Y[augment_idx]
+
+    def _tsne_visualize(
+        self,
+        visualizer_params: Dict,
+        dataloader: DataLoader,
+        reducer: TSNE
+    ):
         total_X = []
         total_Y = []
         total_Z = []
 
         for batch_idx, batch in enumerate(tqdm(dataloader)):
-            batch = move_to_device(batch, 0)
+            if self.GPU > -1:
+                batch = move_to_device(batch, self.GPU)
+            else:
+                pass
 
             token_X = batch["tokens"]
             label_Y = batch["label"].detach().cpu().numpy()
@@ -209,15 +235,45 @@ class TSNEVisualizer(visualizer):
             total_Z.append(augment_Z)
 
         total_X = np.vstack(total_X)
-        total_X = self._reduce_dim(total_X)
         total_Y = np.concatenate(total_Y)
         total_Z = np.concatenate(total_Z)
 
-        self._visualize(
+        origin_X, origin_Y, augment_X, augment_Y = self._get_sample_array(
             total_X,
             total_Y,
-            total_Z
+            total_Z,
+            visualizer_params["proportion"]
         )
+
+        total_X = np.vstack([origin_X, augment_X])
+        total_X = self._reduce_dim(reducer, total_X)
+
+        self._visualize(
+            total_X,
+            origin_Y,
+            augment_Y,
+            reducer
+        )
+
+    @overrides
+    def visualize(
+        self,
+        visualizer_params: Dict,
+        ds: AllennlpDataset,
+    ):
+        dataloader = DataLoader(
+            ds,
+            batch_size=visualizer_params["batch_size"],
+            shuffle=False,
+            collate_fn=allennlp_collate
+        )
+
+        for reducer in tqdm(self.reducers):
+            self._tsne_visualize(
+                visualizer_params,
+                dataloader,
+                reducer
+            )
 
 
 def main():

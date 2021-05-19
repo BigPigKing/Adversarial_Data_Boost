@@ -1,9 +1,7 @@
 import torch
 import pickle
 
-
 from allennlp.nn.util import move_to_device
-from tqdm import tqdm
 from torch.utils.data import DataLoader
 from nltk.corpus import wordnet
 from typing import Dict, List
@@ -105,7 +103,7 @@ def augment_and_get_instances_from_dataset(
 
     augment_instances = []
 
-    for episode_idx, episode in tqdm(enumerate(dataloader)):
+    for episode_idx, episode in enumerate(dataloader):
         episode = move_to_device(episode, 0)
 
         # Get augment tokens from reinforcer
@@ -119,7 +117,8 @@ def augment_and_get_instances_from_dataset(
                 episode["label"].int().item(),
                 namespace="labels"
             ),
-            augment=reinforcer.env.similarity_threshold
+            augment=reinforcer.env.similarity_threshold,
+            is_augment=True
         )
         augment_instances.append(augment_instance)
 
@@ -159,6 +158,10 @@ def get_and_save_augmentation_sentence(
     total_augment_instances = []
 
     for policy_weight_path, saved_name in zip(policy_weight_paths, saved_names):
+        import time
+        start_time = time.time()
+
+        print("Generating augmented instances with {}".format(policy_weight_path))
         # Load pretrained_weight
         reinforcer.policy.load_state_dict(torch.load(policy_weight_path + ".pkl"))
 
@@ -174,6 +177,7 @@ def get_and_save_augmentation_sentence(
 
         # Collect augmented instances
         total_augment_instances += augment_instances
+        print("--- %s seconds ---" % (time.time() - start_time))
 
     return total_augment_instances
 
