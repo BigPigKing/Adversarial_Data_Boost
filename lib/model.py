@@ -45,6 +45,11 @@ class SentimentModel(torch.nn.Module):
         # Evaluate initialization
         self.accuracy = sentiment_model_params["evaluation"]
 
+        # Clip initialization
+        self.is_clip = sentiment_model_params["clip_grad"]["is_clip"]
+        self.max_norm = sentiment_model_params["clip_grad"]["max_norm"]
+        self.norm_type = sentiment_model_params["clip_grad"]["norm_type"]
+
         self.is_finetune = is_finetune
 
     @overrides
@@ -96,6 +101,14 @@ class SentimentModel(torch.nn.Module):
         loss.backward()
 
         for optimizer in optimizers:
+            if self.is_clip is True:
+                torch.nn.utils.clip_grad_norm_(
+                    self.parameters(),
+                    self.max_norm,
+                    self.norm_type
+                )
+            else:
+                pass
             optimizer.step()
             optimizer.zero_grad()
 

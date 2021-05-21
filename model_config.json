@@ -51,18 +51,23 @@
             "lr": 1e-5
         },
         "scheduler": {
-            "select_scheduler": "none"
+            "select_scheduler": "reduce"
         },
         "criterions": {
             "classification_criterion": "cross_entropy",
             "contrastive_criterion": "consine_embedding"
         },
-        "evaluation": "categorical"
+        "evaluation": "categorical",
+        "clip_grad": {
+            "is_clip": true,
+            "max_norm": 0.9,
+            "norm_type": 2
+        }
     },
 
     "reinforcer": {
         "environment": {
-            "similarity_threshold": 0.1
+            "similarity_threshold": 0.8
         },
 
         "augmenter": {
@@ -150,14 +155,14 @@
     },
 
     "train_mode": {
-        "select_mode": 2,
+        "select_mode": 3,
         "0": {
             "text_trainer": {
                 "dataloader": {
                     "batch_size": 600,
                     "shuffle": true
                 },
-                "epochs": 36,
+                "epochs": 30,
                 "is_save": true
             },
             "reinforce_trainer": {
@@ -174,12 +179,24 @@
                 "select_policy": [
                     "model_record/reinforce_model_weights/policy11",
                     "model_record/reinforce_model_weights/policy12",
-                    "model_record/reinforce_model_weights/policy13"
+                    "model_record/reinforce_model_weights/policy13",
+                    "model_record/reinforce_model_weights/policy21",
+                    "model_record/reinforce_model_weights/policy22",
+                    "model_record/reinforce_model_weights/policy23",
+                    "model_record/reinforce_model_weights/policy31",
+                    "model_record/reinforce_model_weights/policy32",
+                    "model_record/reinforce_model_weights/policy33"
                 ],
                 "save_name": [
                     "model_record/augments/augment11",
                     "model_record/augments/augment12",
-                    "model_record/augments/augment13"
+                    "model_record/augments/augment13",
+                    "model_record/augments/augment21",
+                    "model_record/augments/augment22",
+                    "model_record/augments/augment23",
+                    "model_record/augments/augment31",
+                    "model_record/augments/augment32",
+                    "model_record/augments/augment33"
                 ]
             },
             "text_finetuner": {
@@ -192,7 +209,13 @@
                 "augmented_instance": [
                     "model_record/augments/augment11",
                     "model_record/augments/augment12",
-                    "model_record/augments/augment13"
+                    "model_record/augments/augment13",
+                    "model_record/augments/augment21",
+                    "model_record/augments/augment22",
+                    "model_record/augments/augment23",
+                    "model_record/augments/augment31",
+                    "model_record/augments/augment32",
+                    "model_record/augments/augment33"
                 ]
             }
         },
@@ -214,14 +237,26 @@
             "augmented_instance_generator": {
                 "num_processor": 1,
                 "select_policy": [
-                    "policy10",
-                    "policy11",
-                    "policy12"
+                    "model_record/reinforce_model_weights/policy11",
+                    "model_record/reinforce_model_weights/policy12",
+                    "model_record/reinforce_model_weights/policy13",
+                    "model_record/reinforce_model_weights/policy21",
+                    "model_record/reinforce_model_weights/policy22",
+                    "model_record/reinforce_model_weights/policy23",
+                    "model_record/reinforce_model_weights/policy31",
+                    "model_record/reinforce_model_weights/policy32",
+                    "model_record/reinforce_model_weights/policy33"
                 ],
                 "save_name": [
-                    "model_record/augments/augment10",
                     "model_record/augments/augment11",
-                    "model_record/augments/augment12"
+                    "model_record/augments/augment12",
+                    "model_record/augments/augment13",
+                    "model_record/augments/augment21",
+                    "model_record/augments/augment22",
+                    "model_record/augments/augment23",
+                    "model_record/augments/augment31",
+                    "model_record/augments/augment32",
+                    "model_record/augments/augment33"
                 ]
             },
             "text_finetuner": {
@@ -232,9 +267,15 @@
                 "epochs": 24,
                 "is_save": false,
                 "augmented_instance": [
-                    "model_record/augments/augment10",
                     "model_record/augments/augment11",
-                    "model_record/augments/augment12"
+                    "model_record/augments/augment12",
+                    "model_record/augments/augment13",
+                    "model_record/augments/augment21",
+                    "model_record/augments/augment22",
+                    "model_record/augments/augment23",
+                    "model_record/augments/augment31",
+                    "model_record/augments/augment32",
+                    "model_record/augments/augment33"
                 ]
             }
         },
@@ -295,9 +336,6 @@
                 "epochs": 1200,
                 "is_save": false,
                 "augmented_instance": [
-                    "model_record/augments/augment1",
-                    "model_record/augments/augment2",
-                    "model_record/augments/augment3"
                 ]
             }
         },
