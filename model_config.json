@@ -155,21 +155,21 @@
     },
 
     "train_mode": {
-        "select_mode": 3,
+        "select_mode": 1,
         "0": {
             "text_trainer": {
                 "dataloader": {
                     "batch_size": 600,
                     "shuffle": true
                 },
-                "epochs": 30,
+                "epochs": 12,
                 "is_save": true
             },
             "reinforce_trainer": {
                 "dataloader": {
                     "shuffle": true
                 },
-                "epochs": 3,
+                "epochs": 1,
                 "is_save": true,
                 "is_writer": true,
                 "batch_size": 600
@@ -229,13 +229,13 @@
                 "dataloader": {
                     "shuffle": true
                 },
-                "epochs": 4,
+                "epochs": 1,
                 "is_save": true,
                 "is_writer": true,
                 "batch_size": 600
             },
             "augmented_instance_generator": {
-                "num_processor": 1,
+                "num_processor": 3,
                 "select_policy": [
                     "model_record/reinforce_model_weights/policy11",
                     "model_record/reinforce_model_weights/policy12",

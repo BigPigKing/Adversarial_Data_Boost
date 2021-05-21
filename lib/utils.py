@@ -107,7 +107,6 @@ def augment_and_get_instances_from_dataset(
         episode = move_to_device(episode, 0)
 
         # Get augment tokens from reinforcer
-        reinforcer.eval()
         aug_tokens = reinforcer.augment(episode["tokens"])[-1]  # Because we only have one sentence in this scenario
 
         # text to instance

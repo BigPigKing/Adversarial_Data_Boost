@@ -94,6 +94,7 @@ class ReinforceTrainer(Trainer):
 
                 # Optimize
                 self.train_model.optimize(batch_output_dict["loss"] / batch_size)
+                print(batch_output_dict["reward"] / batch_size)
 
                 # Initialize
                 batch_output_dict = {
@@ -110,6 +111,7 @@ class ReinforceTrainer(Trainer):
                         self.train_model.policy.state_dict(),
                         "model_record/reinforce_model_weights/policy" + str(self.record_step) + ".pkl"
                     )
+                break
 
     def fit(
         self,
@@ -215,11 +217,13 @@ class TextTrainer(Trainer):
 
             # Do validation
             self.train_model.eval()
-            valid_avg_loss, valid_avg_acc = self._fit_valid(valid_data_loader)
+            with torch.no_grad():
+                valid_avg_loss, valid_avg_acc = self._fit_valid(valid_data_loader)
 
             # Do testing
             self.train_model.eval()
-            test_avg_loss, test_avg_acc = self._fit_valid(test_data_loader)
+            with torch.no_grad():
+                test_avg_loss, test_avg_acc = self._fit_valid(test_data_loader)
 
             # LR schedulr
             if self.train_model.scheduler is not None:

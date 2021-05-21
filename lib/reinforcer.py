@@ -48,14 +48,15 @@ class Environment(object):
         self,
         state: Dict[str, Dict[str, torch.Tensor]]
     ):
-        # Embedded first
-        embedded_state = self.embedder(state)
+        with torch.no_grad():
+            # Embedded first
+            embedded_state = self.embedder(state)
 
-        # get token mask
-        state_mask = get_text_field_mask(state)
+            # get token mask
+            state_mask = get_text_field_mask(state)
 
-        # Encode
-        encoded_state = self.encoder(embedded_state, state_mask)
+            # Encode
+            encoded_state = self.encoder(embedded_state, state_mask)
 
         return encoded_state
 
@@ -65,7 +66,8 @@ class Environment(object):
     ):
         self.initial_state = wrapped_token_of_sent
         self.encoded_initial_state = self.get_encoded_state(self.initial_state)
-        self.initial_prediction = self.classifier(self.encoded_initial_state)
+        with torch.no_grad():
+            self.initial_prediction = self.classifier(self.encoded_initial_state)
         self.current_state = wrapped_token_of_sent
         self.current_step = 0
 
@@ -83,9 +85,10 @@ class Environment(object):
         # Calculate Reward - Typical
         if self.cos_similarity(self.encoded_initial_state, encoded_augmented_state) < self.similarity_threshold:
             done = True
-            reward = -0.5
+            reward = -1.8
         else:
-            augmented_prediction = self.classifier(encoded_augmented_state)
+            with torch.no_grad():
+                augmented_prediction = self.classifier(encoded_augmented_state)
             reward = np.log(
                 self.mse_loss_reward(
                     self.initial_prediction.detach(),
@@ -96,7 +99,7 @@ class Environment(object):
             reward = 1 / - reward
 
         # Penelty Reward
-        penelty_reward = 0.5 * self.current_step / self.max_step
+        penelty_reward = 1.8 * self.current_step / self.max_step
 
         # Record Step
         self.current_step += 1
@@ -113,7 +116,7 @@ class Environment(object):
         # Last action will be "stop"
         if action == len(self.augmenter_list) - 1:
             done = True
-            reward = 1 / 20.0
+            reward = 1
         else:
             augmented_state = self.augmenter_list[action].augment(self.current_state)
             reward, done = self._get_env_respond(augmented_state)
@@ -163,14 +166,15 @@ class Policy(torch.nn.Module):
         self,
         state: Dict[str, Dict[str, torch.Tensor]]
     ):
-        # Embedded first
-        embedded_state = self.embedder(state)
+        with torch.no_grad():
+            # Embedded first
+            embedded_state = self.embedder(state)
 
-        # get token mask
-        state_mask = get_text_field_mask(state)
+            # get token mask
+            state_mask = get_text_field_mask(state)
 
-        # Encode
-        encoded_state = self.encoder(embedded_state, state_mask)
+            # Encode
+            encoded_state = self.encoder(embedded_state, state_mask)
 
         # Get action probs
         action_scores = self.feedforward(encoded_state.detach())
@@ -196,6 +200,10 @@ class REINFORCER(torch.nn.Module):
         REINFORCE_params: Dict
     ):
         super(REINFORCER, self).__init__()
+
+        embedder.eval()
+        encoder.eval()
+        classifier.eval()
 
         self.policy = Policy(
             embedder,
@@ -334,6 +342,7 @@ class REINFORCER(torch.nn.Module):
         output_dict["actions"] = actions
         output_dict["loss"] = loss
         output_dict["ep_reward"] = torch.sum(torch.tensor(rewards), dim=0)
+        # print(output_dict["ep_reward"])
 
         return output_dict
 

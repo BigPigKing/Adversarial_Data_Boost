@@ -14,6 +14,8 @@ def train_text_model(
     dataset_dict: Dict,
     text_model: torch.nn.Module
 ):
+    text_model.train()
+
     # Get Text Trainer
     text_trainer = set_and_get_text_trainer(
         mode_params["text_trainer"],
@@ -67,12 +69,15 @@ def generate_augmented_data(
     dataset_dict: Dict,
     reinforcer: torch.nn.Module
 ):
-    set_and_save_augmented_sentences(
-        mode_params["augmented_instance_generator"],
-        dataset_dict["dataset_reader"],
-        dataset_dict["train_ds"],
-        reinforcer
-    )
+    reinforcer.eval()
+
+    with torch.no_grad():
+        set_and_save_augmented_sentences(
+            mode_params["augmented_instance_generator"],
+            dataset_dict["dataset_reader"],
+            dataset_dict["train_ds"],
+            reinforcer
+        )
 
 
 def finetune_text_model(
@@ -101,6 +106,7 @@ def finetune_text_model(
     )
 
     # Train Text Model
+    text_model.train()
     text_trainer.fit(
         mode_params["text_finetuner"]["epochs"],
         train_dataloader,
