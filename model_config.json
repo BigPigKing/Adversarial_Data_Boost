@@ -155,21 +155,21 @@
     },
 
     "train_mode": {
-        "select_mode": 1,
+        "select_mode": 0,
         "0": {
             "text_trainer": {
                 "dataloader": {
                     "batch_size": 600,
                     "shuffle": true
                 },
-                "epochs": 12,
+                "epochs": 30,
                 "is_save": true
             },
             "reinforce_trainer": {
                 "dataloader": {
                     "shuffle": true
                 },
-                "epochs": 1,
+                "epochs": 3,
                 "is_save": true,
                 "is_writer": true,
                 "batch_size": 600

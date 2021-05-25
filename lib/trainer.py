@@ -111,7 +111,6 @@ class ReinforceTrainer(Trainer):
                         self.train_model.policy.state_dict(),
                         "model_record/reinforce_model_weights/policy" + str(self.record_step) + ".pkl"
                     )
-                break
 
     def fit(
         self,
