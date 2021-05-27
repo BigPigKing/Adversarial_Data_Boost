@@ -260,12 +260,6 @@ def visualize_procedure(
     visualizer.encoder = text_model.encoder
     del text_model
 
-    # get the augmented data to the dataset
-    augmented_instances = get_augmented_instances(
-        mode_params["augmented_instance"]
-    )
-    dataset_dict["train_ds"].instances += augmented_instances
-
     # Visualize
     visualizer.visualize(
         mode_params["visualizer"],
@@ -328,7 +322,7 @@ def main(config_params):
             reinforcer
         )
     elif config_params["train_mode"]["select_mode"] == 3:
-        text_model.is_finetune = False
+        text_model.is_finetune = True
         finetune_procedure(
             config_params["train_mode"]["3"],
             dataset_dict,

@@ -85,7 +85,7 @@ class Environment(object):
         # Calculate Reward - Typical
         if self.cos_similarity(self.encoded_initial_state, encoded_augmented_state) < self.similarity_threshold:
             done = True
-            reward = -0.6
+            reward = -0.72
         else:
             with torch.no_grad():
                 augmented_prediction = self.classifier(encoded_augmented_state)
@@ -99,7 +99,7 @@ class Environment(object):
             reward = 1 / - reward
 
         # Penelty Reward
-        penelty_reward = 0.6 * self.current_step / self.max_step
+        penelty_reward = 0.15 * self.current_step / self.max_step
 
         # Record Step
         self.current_step += 1
@@ -116,7 +116,7 @@ class Environment(object):
         # Last action will be "stop"
         if action == len(self.augmenter_list) - 1:
             done = True
-            reward = 1
+            reward = 0.24
         else:
             augmented_state = self.augmenter_list[action].augment(self.current_state)
             reward, done = self._get_env_respond(augmented_state)

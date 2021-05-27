@@ -67,7 +67,7 @@
 
     "reinforcer": {
         "environment": {
-            "similarity_threshold": 0.8
+            "similarity_threshold": 0.9
         },
 
         "augmenter": {
@@ -99,10 +99,10 @@
 
         "policy": {
             "feedforward": {
-                "num_layers": 3,
-                "hidden_dims": [64, 32],
+                "num_layers": 4,
+                "hidden_dims": [64, 32, 16],
                 "activations": "relu",
-                "dropout": 0.3
+                "dropout": 0.2
             },
 
             "optimizer": {
@@ -119,50 +119,47 @@
     },
 
     "visualizer": {
-        "col_names": [
-            "tsne_1",
-            "tsne_2",
-            "category"
-        ],
-        "n_components": 2,
-        "perplexity": [
-            5,
-            10,
-            15,
-            20,
-            30,
-            40,
-            50,
-            60,
-            70,
-            80,
-            90,
-            100,
-            110,
-            120,
-            130,
-            140,
-            150,
-            200,
-            300,
-            500,
-            750,
-            1000
-        ],
-        "n_iter": 1000,
-        "verbose": 1,
-        "save_fig_path": "model_record/visual/"
+        "mode": "isomap",
+        "tsne": {
+            "col_names": [
+                "tsne_1",
+                "tsne_2",
+                "category"
+            ],
+            "n_components": 2,
+            "perplexity": [
+                5, 10, 15, 20, 30,
+                40, 50, 60, 70, 80,
+                90, 100, 110, 120, 130,
+                140, 150, 200, 300, 500,
+                750, 1000
+            ],
+            "n_iter": 1000,
+            "verbose": 1,
+            "save_fig_path": "model_record/visual/"
+        },
+        "isomap": {
+            "col_names": [
+                "isomap_1",
+                "isomap_2",
+                "category"
+            ],
+            "n_neighbors": 5,
+            "n_components": 2,
+            "n_jobs": -1,
+            "save_fig_path": "model_record/visual/isomap/"
+        }
     },
 
     "train_mode": {
-        "select_mode": 0,
+        "select_mode": 1,
         "0": {
             "text_trainer": {
                 "dataloader": {
                     "batch_size": 600,
                     "shuffle": true
                 },
-                "epochs": 30,
+                "epochs": 39,
                 "is_save": true
             },
             "reinforce_trainer": {
@@ -229,10 +226,10 @@
                 "dataloader": {
                     "shuffle": true
                 },
-                "epochs": 1,
+                "epochs": 3,
                 "is_save": true,
                 "is_writer": true,
-                "batch_size": 600
+                "batch_size": 120
             },
             "augmented_instance_generator": {
                 "num_processor": 3,
@@ -349,12 +346,19 @@
 
             "visualizer": {
                 "batch_size": 1200,
-                "proportion": 0.01
-            },
-
-            "augmented_instance": [
-                "model_record/augments/augment33"
-            ]
+                "proportion": 0.6,
+                "augmented_instance": [
+                    "model_record/augments/augment11",
+                    "model_record/augments/augment12",
+                    "model_record/augments/augment13",
+                    "model_record/augments/augment21",
+                    "model_record/augments/augment22",
+                    "model_record/augments/augment23",
+                    "model_record/augments/augment31",
+                    "model_record/augments/augment32",
+                    "model_record/augments/augment33"
+                ]
+            }
         }
     }
 }

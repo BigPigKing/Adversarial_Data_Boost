@@ -99,7 +99,7 @@ def augment_and_get_instances_from_dataset(
     dataset: AllennlpDataset,
     reinforcer
 ):
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=True, collate_fn=allennlp_collate)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=allennlp_collate)
 
     augment_instances = []
 
