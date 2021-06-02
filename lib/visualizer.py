@@ -243,7 +243,8 @@ class IsomapVisualizer(visualizer):
     def _plot(
         self,
         plot_df: pd.DataFrame,
-        meta_filename: str
+        meta_filename: str,
+        is_comparison: bool = False
     ):
         palette = sns.color_palette("Paired")
 
@@ -289,6 +290,16 @@ class IsomapVisualizer(visualizer):
                 "s",
                 "X"
             ]
+
+        if is_comparison is True:
+            label_num = plot_df[self.col_names[2]].nunique()
+            palette = sns.color_palette("hls", label_num)
+            sizes = [10] * label_num
+            sizes[0] = 90
+            markers = ["o"] * label_num
+            markers[0] = "X"
+        else:
+            pass
 
         plt.xlim(-80, 80)
         plt.ylim(-80, 80)
@@ -378,7 +389,9 @@ class IsomapVisualizer(visualizer):
                 "X"
             ]
         else:
-            raise ValueError("FUCK")
+            palette = sns.color_palette("Paired", label_num)
+            sizes = [10] * label_num
+            markers = ["s"] * label_num
 
         plt.xlim(-80, 80)
         plt.ylim(-80, 80)
@@ -411,11 +424,10 @@ class IsomapVisualizer(visualizer):
         )
         plt.close()
 
-    @overrides
-    def visualize(
+    def standard_visualize(
         self,
         visualizer_params: Dict,
-        ds: AllennlpDataset,
+        ds: AllennlpDataset
     ):
         encoded_array_dict = self._get_encoded_array_dict(
             visualizer_params,
@@ -491,149 +503,88 @@ class IsomapVisualizer(visualizer):
             "all"
         )
 
-
-class OldIsomapVisualizer(visualizer):
-    def __init__(
+    def _get_comparison_encoded_array_dict(
         self,
         visualizer_params: Dict,
-        embedder: TextEmbedder,
-        encoder: TextEncoder,
-        vocab: Vocabulary
+        ds: AllennlpDataset
     ):
-        self.embedder = embedder
-        self.encoder = encoder
-        self.vocab = vocab
-        self.col_names = visualizer_params["col_names"]
-        self.reducer = Isomap(
-            n_neighbors=visualizer_params["n_neighbors"],
-            n_components=visualizer_params["n_components"],
-            n_jobs=visualizer_params["n_jobs"]
-        )
-        self.save_fig_path = visualizer_params["save_fig_path"] + "fig"
-        self.GPU = next(encoder.parameters()).get_device()
+        comparison_dict = {}
+        origin_dict = {}
 
-    def _get_sample_array(
-        self,
-        total_X: np.ndarray,
-        total_Y: np.ndarray,
-        total_Z: np.ndarray,
-        proportion: float
-    ):
-        # total_Z responsible for indexing, 1 means the original data
-        total_Z = total_Z == 1
-
-        origin_X = total_X[total_Z]
-        origin_Y = total_Y[total_Z]
-        augment_X = total_X[~total_Z]
-        augment_Y = total_Y[~total_Z]
-
-        origin_idx = np.random.choice(
-            origin_X.shape[0],
-            int(origin_X.shape[0] * proportion),
-            replace=False
+        # Get original encoded array first
+        dataloader = DataLoader(
+            ds,
+            batch_size=visualizer_params["batch_size"],
+            shuffle=False,
+            collate_fn=allennlp_collate
         )
 
-        augment_idx = np.random.choice(
-            augment_X.shape[0],
-            int(augment_X.shape[0] * proportion),
-            replace=False
+        origin_origin_dict = {}
+        total_X, total_Y = self._get_encoded_array(
+            dataloader
         )
+        origin_origin_dict["X"] = total_X
+        origin_origin_dict["Y"] = total_Y
+        origin_dict["origin"] = origin_origin_dict
 
-        return origin_X[origin_idx, :], origin_Y[origin_idx], augment_X[augment_idx, :], augment_Y[augment_idx]
+        comparison_dict["origin"] = origin_dict
 
-    def _encode(
+        for comp_key, comp_val in visualizer_params["sim_comparison"]["comparison_dict"].items():
+            comp_dict = {}
+            for augmented_path in comp_val:
+                aug_dict = {}
+                augmented_instances = get_augmented_instances(
+                    augmented_path
+                )
+                ds.instances = augmented_instances
+
+                dataloader = DataLoader(
+                    ds,
+                    batch_size=visualizer_params["batch_size"],
+                    shuffle=False,
+                    collate_fn=allennlp_collate
+                )
+
+                total_X, total_Y = self._get_encoded_array(
+                    dataloader
+                )
+
+                aug_dict["X"] = total_X
+                aug_dict["Y"] = total_Y
+                comp_dict[augmented_path] = aug_dict
+            comparison_dict[comp_key] = comp_dict
+
+        return comparison_dict
+
+    def _get_comp_plot_df(
         self,
-        token_X: torch.Tensor
-    ):
-        with torch.no_grad():
-            embed_X = self.embedder(token_X)
-            tokens_mask = get_text_field_mask(token_X)
-            encode_X = self.encoder(embed_X.detach(), tokens_mask)
-
-        return encode_X
-
-    def _get_encoded_array(
-        self,
-        visualizer_params: Dict,
-        dataloader: DataLoader
+        comparison_dict: Dict
     ):
         total_X = []
         total_Y = []
-        total_Z = []
 
-        for batch_idx, batch in enumerate(tqdm(dataloader)):
-            if self.GPU > -1:
-                batch = move_to_device(batch, self.GPU)
-            else:
-                pass
-
-            token_X = batch["tokens"]
-            label_Y = batch["label"].detach().cpu().numpy()
-            augment_Z = np.array(batch["augment"])
-
-            encode_X = self._encode(token_X).cpu().numpy()
-
-            total_X.append(encode_X)
-            total_Y.append(label_Y)
-            total_Z.append(augment_Z)
-
-        total_X = np.vstack(total_X)
-        total_Y = np.concatenate(total_Y)
-        total_Z = np.concatenate(total_Z)
-
-        origin_X, origin_Y, augment_X, augment_Y = self._get_sample_array(
-            total_X,
-            total_Y,
-            total_Z,
-            visualizer_params["proportion"]
-        )
-
-        return origin_X, origin_Y, augment_X, augment_Y
-
-    @overrides
-    def _reduce_dim(
-        self,
-        input_X: torch.Tensor
-    ):
-        reduce_X = self.reducer.transform(input_X)
-
-        return reduce_X
-
-    def _get_plot_df(
-        self,
-        total_X: np.ndarray,
-        origin_Y: np.ndarray,
-        augment_Y: np.ndarray,
-    ):
-        origin_Y = np.array(
-            list(
-                map(
-                    lambda x: self.vocab.get_token_from_index(
-                        x,
-                        namespace="labels"
-                    ),
-                    list(origin_Y)
+        for comp_key, comp_val in comparison_dict.items():
+            total_X.append(comp_val["X"])
+            Y = np.array(
+                list(
+                    map(
+                        lambda x: self.vocab.get_token_from_index(
+                            x,
+                            namespace="labels"
+                        ) + "_" + comp_key,
+                        list(comp_val["Y"])
+                    )
                 )
             )
-        )
-        augment_Y = np.array(
-            list(
-                map(
-                    lambda x: self.vocab.get_token_from_index(
-                        x,
-                        namespace="labels"
-                    ) + "_aug",
-                    list(augment_Y)
-                )
-            )
-        )
+            total_Y.append(Y)
 
         # Union
-        union_Y = np.concatenate([origin_Y, augment_Y])
+        union_X = np.vstack(total_X)
+        union_Y = np.concatenate(total_Y)
         union_Y = union_Y.reshape([union_Y.shape[0], 1])
-        del origin_Y, augment_Y
-        union_arr = np.hstack([total_X, union_Y])
-        del total_X, union_Y
+        del total_X, total_Y
+        union_arr = np.hstack([union_X, union_Y])
+        del union_X, union_Y
 
         # Get Df
         plot_df = pd.DataFrame(
@@ -648,45 +599,50 @@ class OldIsomapVisualizer(visualizer):
 
         return plot_df
 
-    def _plot(
+    def comparison_visualize(
         self,
-        plot_df: pd.DataFrame
+        visualizer_params: Dict,
+        ds
     ):
-        palette = sns.color_palette("Paired")
-        palette = [
-            palette[1],
-            palette[0],
-            palette[5],
-            palette[4]
-        ]
-
-        sns.scatterplot(
-            data=plot_df,
-            x=self.col_names[0],
-            y=self.col_names[1],
-            size=self.col_names[2],
-            size_order=list(plot_df[self.col_names[2]].unique()).sort(),
-            sizes=[
-                10,
-                5,
-                10,
-                5
-            ],
-            hue=self.col_names[2],
-            hue_order=list(plot_df[self.col_names[2]].unique()).sort(),
-            style=self.col_names[2],
-            style_order=list(plot_df[self.col_names[2]].unique()).sort(),
-            legend="full",
-            palette=palette,
-            alpha=1,
-            s=30
+        encoded_array_dict = self._get_comparison_encoded_array_dict(
+            visualizer_params,
+            ds
         )
 
-        plt.savefig(
-            self.save_fig_path,
-            dpi=1200
+        sample_idx = np.random.choice(
+            encoded_array_dict["origin"]["origin"]["X"].shape[0],
+            1
         )
-        plt.close()
+
+        comparison_dict = {}
+
+        for comp_key, comp_val in encoded_array_dict.items():
+            comp_X = []
+            comp_Y = []
+            comp_dict = {}
+            for select_key, select_val in comp_val.items():
+                comp_X.append(
+                    self.reducer.transform(
+                        select_val["X"][sample_idx, :]
+                    )
+                )
+                comp_Y.append(select_val["Y"][sample_idx])
+            comp_dict["X"] = np.vstack(comp_X)
+            comp_dict["Y"] = np.concatenate(comp_Y)
+            comparison_dict[comp_key] = comp_dict
+
+        del encoded_array_dict
+
+        plot_df = self._get_comp_plot_df(
+            comparison_dict
+        )
+        print(plot_df)
+
+        self._plot(
+            plot_df,
+            "comparison",
+            is_comparison=True
+        )
 
     @overrides
     def visualize(
@@ -694,32 +650,16 @@ class OldIsomapVisualizer(visualizer):
         visualizer_params: Dict,
         ds: AllennlpDataset,
     ):
-        dataloader = DataLoader(
-            ds,
-            batch_size=visualizer_params["batch_size"],
-            shuffle=False,
-            collate_fn=allennlp_collate
-        )
-
-        origin_X, origin_Y, augment_X, augment_Y = self._get_encoded_array(
+        self.standard_visualize(
             visualizer_params,
-            dataloader
+            ds
         )
 
-        self.reducer.fit(origin_X)
-
-        total_X = np.vstack([origin_X, augment_X])
-        total_X = self.reducer.transform(total_X)
-
-        plot_df = self._get_plot_df(
-            total_X,
-            origin_Y,
-            augment_Y
-        )
-
-        self._plot(
-            plot_df
-        )
+        if visualizer_params["sim_comparison"]["is_sim_comparison"] is True:
+            self.comparison_visualize(
+                visualizer_params,
+                ds
+            )
 
 
 class TSNEVisualizer(visualizer):

@@ -260,7 +260,7 @@ def visualize_procedure(
     visualizer.encoder = text_model.encoder
     del text_model
 
-    # Visualize
+    # Standard Visualize
     visualizer.visualize(
         mode_params["visualizer"],
         dataset_dict["train_ds"]
@@ -322,7 +322,7 @@ def main(config_params):
             reinforcer
         )
     elif config_params["train_mode"]["select_mode"] == 3:
-        text_model.is_finetune = True
+        text_model.is_finetune = False
         finetune_procedure(
             config_params["train_mode"]["3"],
             dataset_dict,

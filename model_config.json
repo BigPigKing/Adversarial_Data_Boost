@@ -67,7 +67,7 @@
 
     "reinforcer": {
         "environment": {
-            "similarity_threshold": 0.9
+            "similarity_threshold": 0.95
         },
 
         "augmenter": {
@@ -88,7 +88,7 @@
             "replace_augmenter": {
                 "padded_idx": 0,
                 "oov_idx": 0,
-                "magnitude": 1
+                "magnitude": 2
             },
             "insert_augmenter": {
                 "padded_idx": 0,
@@ -152,7 +152,7 @@
     },
 
     "train_mode": {
-        "select_mode": 1,
+        "select_mode": 4,
         "0": {
             "text_trainer": {
                 "dataloader": {
@@ -169,7 +169,7 @@
                 "epochs": 3,
                 "is_save": true,
                 "is_writer": true,
-                "batch_size": 600
+                "batch_size": 360
             },
             "augmented_instance_generator": {
                 "num_processor": 3,
@@ -229,7 +229,7 @@
                 "epochs": 3,
                 "is_save": true,
                 "is_writer": true,
-                "batch_size": 120
+                "batch_size": 600
             },
             "augmented_instance_generator": {
                 "num_processor": 3,
@@ -283,7 +283,7 @@
                 "classifier": "model_record/text_model_weights/classifier.pkl"
             },
             "augmented_instance_generator": {
-                "num_processor": 4,
+                "num_processor": 3,
                 "select_policy": [
                     "model_record/reinforce_model_weights/policy11",
                     "model_record/reinforce_model_weights/policy12",
@@ -333,6 +333,15 @@
                 "epochs": 1200,
                 "is_save": false,
                 "augmented_instance": [
+                    "model_record/augments/augment11",
+                    "model_record/augments/augment12",
+                    "model_record/augments/augment13",
+                    "model_record/augments/augment21",
+                    "model_record/augments/augment22",
+                    "model_record/augments/augment23",
+                    "model_record/augments/augment31",
+                    "model_record/augments/augment32",
+                    "model_record/augments/augment33"
                 ]
             }
         },
@@ -347,6 +356,44 @@
             "visualizer": {
                 "batch_size": 1200,
                 "proportion": 0.6,
+                "sim_comparison": {
+                    "is_sim_comparison": true,
+                    "comparison_dict": {
+                        "sim_0.7": [
+                            "sim_0.7/augments/augment11",
+                            "sim_0.7/augments/augment12",
+                            "sim_0.7/augments/augment13",
+                            "sim_0.7/augments/augment21",
+                            "sim_0.7/augments/augment22",
+                            "sim_0.7/augments/augment23",
+                            "sim_0.7/augments/augment31",
+                            "sim_0.7/augments/augment32",
+                            "sim_0.7/augments/augment33"
+                        ],
+                        "sim_0.8": [
+                            "sim_0.8/augments/augment11",
+                            "sim_0.8/augments/augment12",
+                            "sim_0.8/augments/augment13",
+                            "sim_0.8/augments/augment21",
+                            "sim_0.8/augments/augment22",
+                            "sim_0.8/augments/augment23",
+                            "sim_0.8/augments/augment31",
+                            "sim_0.8/augments/augment32",
+                            "sim_0.8/augments/augment33"
+                        ],
+                        "sim_0.9": [
+                            "sim_0.9/augments/augment11",
+                            "sim_0.9/augments/augment12",
+                            "sim_0.9/augments/augment13",
+                            "sim_0.9/augments/augment21",
+                            "sim_0.9/augments/augment22",
+                            "sim_0.9/augments/augment23",
+                            "sim_0.9/augments/augment31",
+                            "sim_0.9/augments/augment32",
+                            "sim_0.9/augments/augment33"
+                        ]
+                    }
+                },
                 "augmented_instance": [
                     "model_record/augments/augment11",
                     "model_record/augments/augment12",
