@@ -1,16 +1,19 @@
 import torch
 import pickle
 
+from tqdm import tqdm
 from allennlp.nn.util import move_to_device
 from torch.utils.data import DataLoader
 from nltk.corpus import wordnet
 from typing import Dict, List
 from allennlp.data import Vocabulary, DatasetReader, allennlp_collate
 from allennlp.data.dataset_readers.dataset_reader import AllennlpDataset
+from allennlp.data.tokenizers import PretrainedTransformerTokenizer
 
 
 def unpad_text_field_tensors(
     text_field_tensors: Dict[str, Dict[str, torch.Tensor]],
+    is_transformer: bool,
     padded_idx: int = 0
 ) -> List[torch.Tensor]:
     """
@@ -25,18 +28,27 @@ def unpad_text_field_tensors(
             B = num_of_batch, M = unpadded sequence lenth for different sentence
     """
     text_tensor_list = []
-    target_text_field_tensor = text_field_tensors["tokens"]["tokens"]
+
+    if is_transformer is True:
+        target_text_field_tensor = text_field_tensors["tokens"]["token_ids"]
+    else:
+        target_text_field_tensor = text_field_tensors["tokens"]["tokens"]
 
     for sent in target_text_field_tensor:
-        sent_len = len(sent) - (sent == padded_idx).sum()
+        # sent_len = len(sent) - (sent == padded_idx).sum()
 
-        text_tensor_list.append(sent[:sent_len].clone())
+        text_tensor_list.append(sent.clone())
 
-    return text_tensor_list
+    if len(text_tensor_list) != 1:
+        raise ValueError("Augmented but with non-valid batch_size")
+    else:
+        return text_tensor_list
 
 
 def pad_text_tensor_list(
     text_tensor_list: List[torch.tensor],
+    is_transformer: bool,
+    indexer=None,
     padded_idx: int = 0
 ):
     """
@@ -51,9 +63,27 @@ def pad_text_tensor_list(
             B = num_of_batch, S = padded sequence
 
     """
-    padded_text_tensor = torch.nn.utils.rnn.pad_sequence(text_tensor_list, batch_first=True)
 
-    return {"tokens": {"tokens": padded_text_tensor}}
+    if is_transformer is True:
+        assert indexer, "Use transformer but cannot find indexer!"
+
+        padding_length = len(text_tensor_list[0]["token_ids"])
+        text_tensor_dict = indexer.as_padded_tensor_dict(
+            text_tensor_list[0],  # Allennlp only accept one element [BUG Alert]!
+            padding_lengths={
+                "token_ids": padding_length,
+                "mask": padding_length,
+                "type_ids": padding_length
+            }
+        )
+
+        for key, value in text_tensor_dict.items():
+            text_tensor_dict[key] = value.unsqueeze(0)
+
+        return {"tokens": text_tensor_dict}
+    else:
+        padded_text_tensor = torch.nn.utils.rnn.pad_sequence(text_tensor_list, batch_first=True)
+        return {"tokens": {"tokens": padded_text_tensor}}
 
 
 def add_wordnet_to_vocab(
@@ -74,10 +104,22 @@ def add_wordnet_to_vocab(
 def get_sentence_from_text_field_tensors(
     vocab: Vocabulary,
     text_field_tensors: Dict[str, Dict[str, torch.Tensor]],
-    default_field_name: str = "tokens",
+    is_transformer: bool,
     is_tokenized=False
 ):
-    sentences_token_ids = text_field_tensors["tokens"][default_field_name].int().tolist()
+    # Warning: Trash Code.
+    tokenizer = PretrainedTransformerTokenizer(
+        "roberta-base"
+    )
+    if is_transformer is True:
+        sentences_token_ids = text_field_tensors["tokens"]["token_ids"].int().tolist()
+        return tokenizer.tokenizer.decode(
+            sentences_token_ids[0],
+            skip_special_tokens=True
+        )
+    else:
+        sentences_token_ids = text_field_tensors["tokens"]["tokens"].int().tolist()
+
     sentences = []
 
     for sentence_token_ids in sentences_token_ids:
@@ -94,6 +136,26 @@ def get_sentence_from_text_field_tensors(
     return sentences
 
 
+def augment_and_get_texts_from_dataset(
+    dataset_reader: DatasetReader,
+    dataset: AllennlpDataset,
+    reinforcer
+):
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=allennlp_collate)
+
+    augment_texts = []
+
+    for episode_idx, episode in enumerate(tqdm(dataloader)):
+        episode = move_to_device(episode, 0)
+
+        # Get augment string from reinforcer
+        augment_text = reinforcer.augment(episode["tokens"])
+
+        augment_texts.append(augment_text)
+
+    return augment_texts
+
+
 def augment_and_get_instances_from_dataset(
     dataset_reader: DatasetReader,
     dataset: AllennlpDataset,
@@ -103,11 +165,11 @@ def augment_and_get_instances_from_dataset(
 
     augment_instances = []
 
-    for episode_idx, episode in enumerate(dataloader):
+    for episode_idx, episode in enumerate(tqdm(dataloader)):
         episode = move_to_device(episode, 0)
 
         # Get augment tokens from reinforcer
-        aug_tokens = reinforcer.augment(episode["tokens"])[-1]  # Because we only have one sentence in this scenario
+        aug_tokens = reinforcer.augment(episode["tokens"])  # Because we only have one sentence in this scenario
 
         # text to instance
         augment_instance = dataset_reader.text_to_instance(
@@ -147,6 +209,36 @@ def get_synonyms_from_dataset(
     return synonym_dict
 
 
+def new_save_augmentation_sentence(
+    policy_weight_paths: List[str],
+    saved_names: List[str],
+    dataset_reader: DatasetReader,
+    train_dataset: AllennlpDataset,
+    reinforcer
+):
+    for policy_weight_path, saved_name in zip(policy_weight_paths, saved_names):
+        import time
+        start_time = time.time()
+
+        print("Generating augmented instances with {}".format(policy_weight_path))
+        # Load pretrained_weight
+        reinforcer.policy.load_state_dict(torch.load(policy_weight_path + ".pkl"))
+
+        # Get Augmented Sentence
+        augment_texts = augment_and_get_texts_from_dataset(
+            dataset_reader,
+            train_dataset,
+            reinforcer
+        )
+
+        # Save obj
+        save_obj(augment_texts, saved_name)
+
+        print("--- %s seconds ---" % (time.time() - start_time))
+
+    return
+
+
 def get_and_save_augmentation_sentence(
     policy_weight_paths: List[str],
     saved_names: List[str],
@@ -179,6 +271,17 @@ def get_and_save_augmentation_sentence(
         print("--- %s seconds ---" % (time.time() - start_time))
 
     return total_augment_instances
+
+
+def set_augments_to_dataset(
+    dataset: AllennlpDataset,
+    augmented_instances_save_names: List
+):
+    for save_name in augmented_instances_save_names:
+        augment_texts = load_obj(save_name)
+
+        for instance in dataset.instances:
+            instance.add_field
 
 
 def save_obj(

@@ -14,6 +14,7 @@ class SentimentModel(torch.nn.Module):
         encoder: torch.nn.ModuleList,
         classifier: torch.nn.ModuleList,
         sentiment_model_params: Dict,
+        dataset_dict: Dict,
         is_finetune: bool = False
     ):
         super(SentimentModel, self).__init__()
@@ -52,6 +53,10 @@ class SentimentModel(torch.nn.Module):
 
         self.is_finetune = is_finetune
 
+        # Field Names
+        self.text_field_names = dataset_dict["dataset_reader"].field_names["text"]
+        self.label_field_names = dataset_dict["dataset_reader"].field_names["label"]
+
     @overrides
     def forward(
         self,
@@ -60,8 +65,8 @@ class SentimentModel(torch.nn.Module):
         output_dict = {}
 
         # Get input from dict
-        token_X = batch["tokens"]
-        label_Y = batch["label"]
+        token_X = batch[self.text_field_names[0]]
+        label_Y = batch[self.label_field_names[0]]
 
         # Embedded first
         embed_X = self.embedder(token_X)

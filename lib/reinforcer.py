@@ -10,7 +10,7 @@ from allennlp.nn.util import get_token_ids_from_text_field_tensors, get_text_fie
 from allennlp.modules.feedforward import FeedForward
 
 
-class Environment(object):
+class Environment(torch.nn.Module):
     def __init__(
         self,
         embedder: torch.nn.Module,
@@ -20,6 +20,7 @@ class Environment(object):
         max_step: int,
         env_params: Dict
     ):
+        super(Environment, self).__init__()
         # Module initialization
         self.embedder = embedder
         self.encoder = encoder
@@ -29,6 +30,7 @@ class Environment(object):
         # Environment Variable
         self.initial_state = None
         self.current_state = None
+        self.safe_state = None
         self.encoded_initial_state = None
         self.initial_prediction = None
         self.current_step = None
@@ -48,6 +50,9 @@ class Environment(object):
         self,
         state: Dict[str, Dict[str, torch.Tensor]]
     ):
+        training_status = self.training
+
+        self.eval()
         with torch.no_grad():
             # Embedded first
             embedded_state = self.embedder(state)
@@ -58,6 +63,11 @@ class Environment(object):
             # Encode
             encoded_state = self.encoder(embedded_state, state_mask)
 
+        if training_status is True:
+            self.train()
+        else:
+            pass
+
         return encoded_state
 
     def reset(
@@ -66,9 +76,16 @@ class Environment(object):
     ):
         self.initial_state = wrapped_token_of_sent
         self.encoded_initial_state = self.get_encoded_state(self.initial_state)
+        training_status = self.training
+        self.eval()
         with torch.no_grad():
             self.initial_prediction = self.classifier(self.encoded_initial_state)
+        if training_status is True:
+            self.train
+        else:
+            pass
         self.current_state = wrapped_token_of_sent
+        self.safe_state = wrapped_token_of_sent
         self.current_step = 0
 
         return self.initial_state
@@ -78,6 +95,7 @@ class Environment(object):
         augmented_state: Dict[str, Dict[str, torch.Tensor]]
     ):
         done = False
+        safe = True
 
         # Get encoded augmented sentence embedding for similarity calculation preparation
         encoded_augmented_state = self.get_encoded_state(augmented_state)
@@ -85,10 +103,17 @@ class Environment(object):
         # Calculate Reward - Typical
         if self.cos_similarity(self.encoded_initial_state, encoded_augmented_state) < self.similarity_threshold:
             done = True
+            safe = False
             reward = -0.72
         else:
+            training_status = self.training
+            self.eval()
             with torch.no_grad():
                 augmented_prediction = self.classifier(encoded_augmented_state)
+            if training_status is True:
+                self.train()
+            else:
+                pass
             reward = np.log(
                 self.mse_loss_reward(
                     self.initial_prediction.detach(),
@@ -103,6 +128,11 @@ class Environment(object):
 
         # Record Step
         self.current_step += 1
+
+        if safe is True:
+            self.safe_state = augmented_state
+        else:
+            pass
 
         return reward - penelty_reward, done
 
@@ -166,6 +196,9 @@ class Policy(torch.nn.Module):
         self,
         state: Dict[str, Dict[str, torch.Tensor]]
     ):
+        training_status = self.training
+
+        self.eval()
         with torch.no_grad():
             # Embedded first
             embedded_state = self.embedder(state)
@@ -175,6 +208,10 @@ class Policy(torch.nn.Module):
 
             # Encode
             encoded_state = self.encoder(embedded_state, state_mask)
+        if training_status is True:
+            self.train()
+        else:
+            pass
 
         # Get action probs
         action_scores = self.feedforward(encoded_state.detach())
@@ -197,7 +234,8 @@ class REINFORCER(torch.nn.Module):
         vocab: Vocabulary,
         env_params: Dict,
         policy_params: Dict,
-        REINFORCE_params: Dict
+        REINFORCE_params: Dict,
+        dataset_dict: Dict
     ):
         super(REINFORCER, self).__init__()
 
@@ -227,6 +265,15 @@ class REINFORCER(torch.nn.Module):
         self.gamma = REINFORCE_params["gamma"]
         self.clip_grad = REINFORCE_params["clip_grad"]
 
+        # Dataset Related
+        self.text_field_names = dataset_dict["dataset_reader"].field_names["text"]
+        self.is_transformer = dataset_dict["dataset_reader"].is_transformer
+
+        if self.is_transformer is True:
+            self.transformer_vocab = dataset_dict["dataset_reader"]._vocab
+        else:
+            self.transformer_vocab = None
+
     def _get_token_of_sents(
         self,
         token_ids: Dict[str, Dict[str, torch.Tensor]]
@@ -241,7 +288,10 @@ class REINFORCER(torch.nn.Module):
     ):
         wrapped_token_of_sent = torch.stack([token_of_sent])
 
-        return {"tokens": {"tokens": wrapped_token_of_sent}}
+        if self.is_transformer is True:
+            return {"tokens": {"token_ids": wrapped_token_of_sent}}
+        else:
+            return {"tokens": {"tokens": wrapped_token_of_sent}}
 
     def _calculate_loss(
         self,
@@ -302,8 +352,12 @@ class REINFORCER(torch.nn.Module):
             if done is True:
                 break
 
-        # Prepare output dict
-        return get_sentence_from_text_field_tensors(self.vocab, state, is_tokenized=True)
+        return get_sentence_from_text_field_tensors(
+            self.vocab,
+            self.env.safe_state,
+            self.is_transformer,
+            is_tokenized=True
+        )
 
     @overrides
     def forward(
@@ -315,7 +369,7 @@ class REINFORCER(torch.nn.Module):
         """
         output_dict = {}
 
-        wrapped_token_of_sent = episode["tokens"]
+        wrapped_token_of_sent = episode[self.text_field_names[0]]
 
         state = self.env.reset(wrapped_token_of_sent)
         log_probs = []
@@ -337,12 +391,19 @@ class REINFORCER(torch.nn.Module):
         loss = self._calculate_loss(log_probs, rewards)
 
         # Prepare output dict
-        output_dict["origin_sentence"] = get_sentence_from_text_field_tensors(self.vocab, wrapped_token_of_sent)
-        output_dict["augment_sentence"] = get_sentence_from_text_field_tensors(self.vocab, state)
+        output_dict["origin_sentence"] = get_sentence_from_text_field_tensors(
+            self.vocab,
+            wrapped_token_of_sent,
+            self.is_transformer
+        )
+        output_dict["augment_sentence"] = get_sentence_from_text_field_tensors(
+            self.vocab,
+            state,
+            self.is_transformer
+        )
         output_dict["actions"] = actions
         output_dict["loss"] = loss
         output_dict["ep_reward"] = torch.sum(torch.tensor(rewards), dim=0)
-        # print(output_dict["ep_reward"])
 
         return output_dict
 

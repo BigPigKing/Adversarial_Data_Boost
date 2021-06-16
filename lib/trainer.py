@@ -3,6 +3,7 @@ import torch
 
 from tqdm import tqdm
 from typing import Dict
+from collections import Counter
 from overrides import overrides
 from allennlp.nn.util import move_to_device
 from torch.utils.tensorboard import SummaryWriter
@@ -62,7 +63,7 @@ class ReinforceTrainer(Trainer):
             "augment_sentences": []
         }
 
-        for episode_idx, episode in tqdm(enumerate(data_loader)):
+        for episode_idx, episode in enumerate(tqdm(data_loader)):
             # feedforward and get loss
             if self.GPU >= 0:
                 episode = move_to_device(episode, self.GPU)
@@ -74,6 +75,9 @@ class ReinforceTrainer(Trainer):
             # update batch dict
             batch_output_dict["loss"] += output_dict["loss"]
             batch_output_dict["reward"] += output_dict["ep_reward"]
+            batch_output_dict["origin_sentences"] += output_dict["origin_sentence"]
+            batch_output_dict["augment_sentences"] += output_dict["augment_sentence"]
+            batch_output_dict["actions"] += output_dict["actions"]
 
             # batch updating
             if (episode_idx+1) % batch_size == 0:
@@ -81,9 +85,9 @@ class ReinforceTrainer(Trainer):
                 print(self.record_step)
                 print(output_dict["origin_sentence"])
                 print(output_dict["augment_sentence"])
-                batch_output_dict["origin_sentences"] += output_dict["origin_sentence"]
-                batch_output_dict["augment_sentences"] += output_dict["augment_sentence"]
-                batch_output_dict["actions"] += output_dict["actions"]
+                print(output_dict["actions"])
+                print(output_dict["ep_reward"])
+                print(dict(Counter(batch_output_dict["actions"])))
 
                 if self.writer is None:
                     pass

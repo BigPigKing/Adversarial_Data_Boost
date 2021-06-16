@@ -290,6 +290,65 @@ class IsomapVisualizer(visualizer):
                 "s",
                 "X"
             ]
+        elif plot_df[self.col_names[2]].nunique() == 5:
+            palette = [
+                palette[1],
+                palette[3],
+                palette[5],
+                palette[7],
+                palette[9]
+            ]
+            sizes = [
+                10,
+                10,
+                10,
+                10,
+                10
+            ]
+            markers = [
+                "o",
+                "o",
+                "o",
+                "o",
+                "o"
+            ]
+        elif plot_df[self.col_names[2]].nunique() == 10:
+            palette = [
+                palette[1],
+                palette[0],
+                palette[3],
+                palette[2],
+                palette[5],
+                palette[4],
+                palette[7],
+                palette[6],
+                palette[9],
+                palette[8]
+            ]
+            sizes = [
+                10,
+                5,
+                10,
+                5,
+                10,
+                5,
+                10,
+                5,
+                10,
+                5
+            ]
+            markers = [
+                "o",
+                "P",
+                "o",
+                "P",
+                "o",
+                "P",
+                "o",
+                "P",
+                "o",
+                "P"
+            ]
 
         if is_comparison is True:
             label_num = plot_df[self.col_names[2]].nunique()
@@ -301,8 +360,8 @@ class IsomapVisualizer(visualizer):
         else:
             pass
 
-        plt.xlim(-80, 80)
-        plt.ylim(-80, 80)
+        # plt.xlim(-80, 80)
+        # plt.ylim(-80, 80)
 
         sns.scatterplot(
             data=plot_df,
@@ -393,8 +452,8 @@ class IsomapVisualizer(visualizer):
             sizes = [10] * label_num
             markers = ["s"] * label_num
 
-        plt.xlim(-80, 80)
-        plt.ylim(-80, 80)
+        # plt.xlim(-80, 80)
+        # plt.ylim(-80, 80)
 
         sns.scatterplot(
             data=plot_df,
@@ -482,10 +541,10 @@ class IsomapVisualizer(visualizer):
                 s_origin_Y,
                 s_augment_Y
             )
-            self._plot_single(
-                plot_df,
-                key + "_single"
-            )
+            # self._plot_single(
+            #     plot_df,
+            #     key + "_single"
+            # )
 
             # Collect All point
             total_X.append(value[sample_idx, :])
@@ -846,7 +905,7 @@ class TSNEVisualizer(visualizer):
             else:
                 pass
 
-            token_X = batch["tokens"]
+            token_X = batch["token_ids"]
             label_Y = batch["label"].detach().cpu().numpy()
             augment_Z = np.array(batch["augment"])
 

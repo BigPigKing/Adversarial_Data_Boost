@@ -1,116 +1,239 @@
 import abc
+import copy
 import math
 import torch
 import random
 
-from .utils import pad_text_tensor_list, unpad_text_field_tensors, save_obj
-from typing import Dict
+from .utils import pad_text_tensor_list, unpad_text_field_tensors
+from .tokenizer import WordTokenizer
+from typing import Dict, List
 from overrides import overrides
 from nltk.corpus import wordnet
 from allennlp.data import Vocabulary
+from allennlp.nn.util import move_to_device
 from allennlp.modules.token_embedders import Embedding
 
 
-class Augmenter(metaclass=abc.ABCMeta):
+class Augmenter(object):
     def __init__(
         self,
+        vocab: Vocabulary,
+        dataset_dict: Dict,
+        tokenizer=None,
         padded_idx: int = 0
     ):
+        self.detokenizer = dataset_dict["dataset_reader"]._tokenizer
+        self.vocab = dataset_dict["dataset_reader"]._vocab
+        self.indexer = dataset_dict["dataset_reader"]._indexers["tokens"]
+        self.is_transformer = dataset_dict["dataset_reader"].is_transformer
         self.padded_idx = padded_idx
 
+        try:  # if non-transformer
+            self.detokenizer.index_with(vocab)
+        except AttributeError:
+            pass
+        self.tokenizer = tokenizer or WordTokenizer()
+
+    def _get_decode_str(
+        self,
+        token_ids: torch.Tensor
+    ):
+        try:  # This is for the non-transformer tokenizer, because transformer tokenizer in allennlp doesn't have decode
+            decode_str = self.detokenizer.decode(token_ids.tolist())
+        except AttributeError:
+            decode_str = self.detokenizer.tokenizer.decode(
+                token_ids.tolist(),
+                skip_special_tokens=True
+            )
+
+        return decode_str
+
+    def _get_encode_token_ids(
+        self,
+        input_str: str
+    ):
+        try:  # Allennlp pretrained transformer tokenizer doesn't have encode attribute but others have
+            token_ids = self.detokenizer.encode(
+                input_str
+            )
+        except AttributeError:  # Allennlp indexer output is different [Warn]
+            tokens = self.detokenizer.tokenize(
+                input_str
+            )
+            token_ids = self.indexer.tokens_to_indices(
+                tokens,
+                self.vocab
+            )
+
+        return token_ids
+
     @abc.abstractmethod
+    def _action(
+        self,
+        tokens: List[str]
+    ) -> List[str]:
+        return NotImplemented
+
     def _augment(
         self,
-        text_tensor: torch.Tensor
-    ):
-        return NotImplemented
+        token_ids: torch.Tensor
+    ) -> torch.Tensor:
+        # Decode to original string
+        decode_str = self._get_decode_str(
+            token_ids
+        )
+
+        # Tokenize the original string
+        decode_tokens = self.tokenizer.tokenize(
+            decode_str
+        )
+
+        # Action
+        augmented_tokens = self._action(
+            copy.deepcopy(decode_tokens)
+        )
+
+        # Get Augmented String
+        augmented_str = self.tokenizer.detokenize(
+            augmented_tokens
+        )
+
+        # Encode to token_ids
+        augmented_token_ids = self._get_encode_token_ids(
+            augmented_str
+        )
+
+        # print("OriginTokenIds")
+        # print(token_ids)
+        # print()
+        # print("DecodeStr")
+        # print(decode_str)
+        # print()
+        # print("DecodeTokens")
+        # print(decode_tokens)
+        # print()
+        # print("AugmentTokens")
+        # print(augmented_tokens)
+        # print()
+        # print("AugmentStr")
+        # print(augmented_str)
+        # print()
+        # print("AugmentTokenIds")
+        # print(augmented_token_ids)
+        # print()
+        # print("LEN TOKEN ID")
+        # print(len(token_ids))
+        # print("LEN AUGMENTED")
+        # print(len(augmented_token_ids["token_ids"]))
+
+        return augmented_token_ids
 
     def augment(
         self,
         text_field_tensors: Dict[str, Dict[str, torch.Tensor]]
     ):
         augment_text_tensor_list = []
-        text_tensor_list = unpad_text_field_tensors(text_field_tensors)
+        text_tensor_list = unpad_text_field_tensors(text_field_tensors, self.is_transformer)
 
         for text_tensor in text_tensor_list:
             augment_text_tensor = self._augment(text_tensor)
             augment_text_tensor_list.append(augment_text_tensor)
 
-        return pad_text_tensor_list(augment_text_tensor_list)
+        return move_to_device(
+            pad_text_tensor_list(
+                augment_text_tensor_list,
+                self.is_transformer,
+                indexer=self.indexer
+            ),
+            text_tensor_list[0].get_device()
+        )
 
 
 class DeleteAugmenter(Augmenter):
     def __init__(
         self,
-        delete_augmenter_params: Dict
+        delete_augmenter_params: Dict,
+        vocab: Vocabulary,
+        dataset_dict: Dict
     ):
-        super(DeleteAugmenter, self).__init__(padded_idx=delete_augmenter_params["padded_idx"])
+        super(DeleteAugmenter, self).__init__(
+            vocab,
+            dataset_dict
+        )
         self.magnitude = delete_augmenter_params["magnitude"]
 
     @overrides
-    def _augment(
+    def _action(
         self,
-        text_tensor: torch.Tensor
-    ) -> torch.Tensor:
-        if len(text_tensor) == 1:
-            return text_tensor.detach().clone()
+        tokens: List[str]
+    ) -> List[str]:
+        # print("!!!!DELETE")
+        if len(tokens) == 1:
+            return tokens
         else:
-            # Get delete word information
-            num_of_del_word = math.floor(len(text_tensor) * self.magnitude)
-            del_word_idxs = random.sample(range(len(text_tensor)), num_of_del_word)
+            pass
+
+        # Get Delete Word Indexes
+        num_of_del_word = max(1, math.floor(len(tokens) * self.magnitude))
+        del_word_idxs = random.sample(range(len(tokens)), num_of_del_word)
+
+        if len(del_word_idxs) > len(tokens) + 1:
+            return tokens
+        else:
             del_word_idxs.sort()
-            text_list = text_tensor.tolist()
 
-            # Loop to delete word
+            # Delete
             for del_word_idx in reversed(del_word_idxs):
-                del text_list[del_word_idx]
+                del tokens[del_word_idx]
 
-            return torch.tensor(text_list).to(text_tensor.get_device())
+        return tokens
 
 
 class SwapAugmenter(Augmenter):
     def __init__(
         self,
-        swap_augmenter_params: Dict
+        swap_augmenter_params: Dict,
+        vocab: Vocabulary,
+        dataset_dict: Dict
     ):
-        super(SwapAugmenter, self).__init__(padded_idx=swap_augmenter_params["padded_idx"])
+        super(SwapAugmenter, self).__init__(
+            vocab,
+            dataset_dict
+        )
         self.magnitude = swap_augmenter_params["magnitude"]
 
     @overrides
-    def _augment(
+    def _action(
         self,
-        text_tensor: torch.Tensor
-    ) -> torch.Tensor:
-        # Prepare tensor for augmentation
-        augment_text_tensor = text_tensor.detach().clone()
-
-        if len(text_tensor) == 1:
-            return augment_text_tensor
+        tokens: List[str]
+    ) -> List[str]:
+        if len(tokens) == 1:
+            return tokens
         else:
             # Sample swap index
-            first_idx, second_idx = random.sample(range(len(augment_text_tensor)), 2)
+            select_idxs = random.sample(range(len(tokens)), max(len(tokens) * self.magnitude, 2))
+            swap_idxs = copy.deepcopy(select_idxs)
+            random.shuffle(select_idxs)
+            swap_tokens = [copy.deepcopy(tokens[x]) for x in swap_idxs]
 
-            temp = augment_text_tensor[first_idx].clone()
-            augment_text_tensor[first_idx] = augment_text_tensor[second_idx]
-            augment_text_tensor[second_idx] = temp
+            for idx, (select_idx, swap_idx) in enumerate(zip(select_idxs, swap_idxs)):
+                tokens[select_idx] = swap_tokens[idx]
 
-        return augment_text_tensor
+            return tokens
 
 
 class ReplaceAugmenter(Augmenter):
     def __init__(
         self,
+        replace_augmenter_params: Dict,
         vocab: Vocabulary,
-        embedding_layer: Embedding,
-        synonym_dict: Dict,
-        replace_augmenter_params: Dict
+        dataset_dict: Dict
     ):
-        super(ReplaceAugmenter, self).__init__(padded_idx=replace_augmenter_params["padded_idx"])
-        self.oov_idx = replace_augmenter_params["oov_idx"]
-        self.embedding_layer = embedding_layer
+        super(ReplaceAugmenter, self).__init__(
+            vocab,
+            dataset_dict
+        )
         self.magnitude = replace_augmenter_params["magnitude"]
-        self.vocab = vocab
-        self.synonym_dict = synonym_dict
 
     def _find_synonyms(
         self,
@@ -126,20 +249,6 @@ class ReplaceAugmenter(Augmenter):
 
         synonyms = list(synonyms)
 
-        return synonyms
-
-    def _get_synonyms(
-        self,
-        token: str
-    ):
-        try:
-            synonyms = self.synonym_dict[token]
-        except KeyError:
-            synonyms = self._find_synonyms(token)
-            self.synonym_dict[token] = synonyms
-
-            save_obj(self.synonym_dict, "sst_synonyms")
-
         if tuple([token]) in synonyms:
             synonyms.remove(tuple([token]))
         else:
@@ -147,51 +256,119 @@ class ReplaceAugmenter(Augmenter):
 
         return synonyms
 
+    def _get_synonyms(
+        self,
+        token: str
+    ):
+        synonyms = self._find_synonyms(token)
+
+        return synonyms
+
     def _get_replace_synonym(
         self,
-        token_id: int
-    ):
-        token = self.vocab.get_token_from_index(token_id)
+        token: str
+    ) -> tuple:
         synonyms = self._get_synonyms(token)
 
         if synonyms:
             return random.choice(synonyms)
         else:
-            return []
+            return None
 
     @overrides
-    def _augment(
+    def _action(
         self,
-        text_tensor: torch.Tensor
-    ):
-        augment_text_list = text_tensor.tolist()
-        replace_idx = random.sample(range(len(augment_text_list)), 1)[0]
+        tokens: List[str]
+    ) -> List[str]:
+        availiable_token_idxs = []
+        availiable_synonyms = []
 
-        replace_synonym = self._get_replace_synonym(augment_text_list[replace_idx])
+        for idx in range(len(tokens)):
+            replace_synonym = self._get_replace_synonym(
+                tokens[idx]
+            )
 
-        if replace_synonym:
-            for idx, synonym_token in enumerate(replace_synonym):
-                synonym_idx = self.vocab.get_token_index(synonym_token)
+            if replace_synonym:
+                availiable_token_idxs.append(idx)
+                availiable_synonyms.append(replace_synonym)
+            else:
+                pass
 
-                if synonym_idx == self.oov_idx:
-                    synonym_idx = self.vocab.add_token_to_namespace(synonym_token)
-                    self.embedding_layer.token_embedders["tokens"].extend_vocab(self.vocab)
-                    print("fuck")
-                    print(synonym_idx, synonym_token)
+        if len(availiable_synonyms) == 0:
+            return tokens
+
+        replace_idxs = random.sample(
+            range(len(availiable_token_idxs)),
+            max(int(len(availiable_token_idxs) * self.magnitude), 1)
+        )
+
+        for replace_idx in replace_idxs:
+            replace_synonym = availiable_synonyms[replace_idx]
+
+            for synonym_token_idx, synonym_token in enumerate(replace_synonym):
+                if synonym_token_idx == 0:
+                    tokens[availiable_token_idxs[replace_idx]] = synonym_token
                 else:
-                    pass
+                    tokens.insert(
+                        availiable_token_idxs[replace_idx] + synonym_token_idx,
+                        synonym_token
+                    )
 
-                if idx == 0:
-                    augment_text_list[replace_idx] = synonym_idx
-                else:
-                    augment_text_list.insert(replace_idx + idx, synonym_idx)
-        else:
-            pass
-
-        return torch.tensor(augment_text_list).to(text_tensor.get_device())
+        return tokens
 
 
 class InsertAugmenter(ReplaceAugmenter):
+    def __init__(
+        self,
+        insert_augmenter_params: Dict,
+        vocab: Vocabulary,
+        dataset_dict: Dict
+    ):
+        super(InsertAugmenter, self).__init__(
+            insert_augmenter_params,
+            vocab,
+            dataset_dict
+        )
+
+    def _action(
+        self,
+        tokens: List[str]
+    ) -> List[str]:
+        availiable_token_idxs = []
+        availiable_synonyms = []
+
+        for idx in range(len(tokens)):
+            replace_synonym = self._get_replace_synonym(
+                tokens[idx]
+            )
+
+            if replace_synonym:
+                availiable_token_idxs.append(idx)
+                availiable_synonyms.append(replace_synonym)
+            else:
+                pass
+
+        if len(availiable_synonyms) == 0:
+            return tokens
+
+        replace_idxs = random.sample(
+            range(len(availiable_token_idxs)),
+            max(int(len(availiable_token_idxs) * self.magnitude), 1)
+        )
+
+        for replace_idx in replace_idxs:
+            replace_synonym = availiable_synonyms[replace_idx]
+
+            for synonym_token_idx, synonym_token in enumerate(replace_synonym):
+                tokens.insert(
+                    availiable_token_idxs[replace_idx] + synonym_token_idx,
+                    synonym_token
+                )
+
+        return tokens
+
+
+class OldInsertAugmenter(ReplaceAugmenter):
     def __init__(
         self,
         vocab: Vocabulary,
@@ -199,7 +376,7 @@ class InsertAugmenter(ReplaceAugmenter):
         synonym_dict: Dict,
         insert_augmenter_params: Dict
     ):
-        super(InsertAugmenter, self).__init__(
+        super(OldInsertAugmenter, self).__init__(
             vocab,
             embedding_layer,
             synonym_dict,
@@ -236,9 +413,11 @@ class InsertAugmenter(ReplaceAugmenter):
 class IdentityAugmenter(Augmenter):
     def __init__(
         self,
+        is_transformer: bool,
         padded_idx: int = 0
     ):
-        super(IdentityAugmenter, self).__init__(padded_idx=padded_idx)
+        return
+        # super(IdentityAugmenter, self).__init__(is_transformer, padded_idx=padded_idx)
 
     @overrides
     def _augment(

@@ -2,15 +2,17 @@ import csv
 import logging
 import numpy as np
 
-from typing import Dict, List, Optional, Union
+from .tokenizer import WordTokenizer
+
+from typing import Dict, Optional, Union
 from overrides import overrides
 from nltk.tree import Tree
 
 from allennlp.common.file_utils import cached_path
 from allennlp.common.checks import ConfigurationError
-from allennlp.data import DatasetReader, Instance
-from allennlp.data.tokenizers import Tokenizer, SpacyTokenizer, Token
-from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
+from allennlp.data import DatasetReader, Instance, Vocabulary
+from allennlp.data.tokenizers import Tokenizer, SpacyTokenizer, Token, PretrainedTransformerTokenizer
+from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer, PretrainedTransformerIndexer
 from allennlp.data.fields import LabelField, TextField, Field, MetadataField
 
 logger = logging.getLogger(__name__)
@@ -109,24 +111,48 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
 
     def __init__(
         self,
-        token_indexers: Dict[str, TokenIndexer] = None,
-        tokenizer: Optional[Tokenizer] = None,
-        use_subtrees: bool = False,
-        granularity: str = "5-class",
+        sst_params: Dict,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self._token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
-        self._tokenizer = tokenizer or SpacyTokenizer()
-        self._use_subtrees = use_subtrees
+
+        if sst_params["transformer_model_name"] is None:
+            self._indexers = {
+                "tokens": SingleIdTokenIndexer()
+            }
+            self._tokenizer = WordTokenizer()
+            self._vocab = None
+            self.is_transformer = False
+        else:
+            self._indexers = {
+                "tokens": PretrainedTransformerIndexer(
+                    sst_params["transformer_model_name"]
+                )
+            }
+            self._tokenizer = PretrainedTransformerTokenizer(
+                sst_params["transformer_model_name"]
+            )
+            self._vocab = Vocabulary.from_pretrained_transformer(
+                sst_params["transformer_model_name"]
+            )
+            self.is_transformer = True
+        self._use_subtrees = sst_params["use_subtrees"]
+        self.detokenizer = WordTokenizer()
+
         allowed_granularities = ["5-class", "3-class", "2-class"]
-        if granularity not in allowed_granularities:
+
+        if sst_params["granularity"] not in allowed_granularities:
             raise ConfigurationError(
                 "granularity is {}, but expected one of: {}".format(
-                    granularity, allowed_granularities
+                    sst_params["granularity"], allowed_granularities
                 )
             )
-        self._granularity = granularity
+        self._granularity = sst_params["granularity"]
+        self.field_names = {
+            "text": [sst_params["review_field_name"]],
+            "label": [sst_params["label_field_name"]],
+            "augments": []
+        }  # Warning: Augments now only suitable for one original field
 
     @overrides
     def _read(self, file_path):
@@ -139,54 +165,53 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                 parsed_line = Tree.fromstring(line)
                 if self._use_subtrees:
                     for subtree in parsed_line.subtrees():
-                        instance = self.text_to_instance(subtree.leaves(), subtree.label())
+                        instance = self.text_to_instance(
+                            self.detokenizer.detokenize(subtree.leaves()),
+                            subtree.label()
+                        )
                         if instance is not None:
                             yield instance
                 else:
-                    instance = self.text_to_instance(parsed_line.leaves(), parsed_line.label())
+                    instance = self.text_to_instance(
+                        self.detokenizer.detokenize(parsed_line.leaves()),
+                        parsed_line.label()
+                    )
                     if instance is not None:
                         yield instance
+
+    def make_token(
+        self,
+        t: Union[str, Token]
+    ):
+        if isinstance(t, str):
+            return Token(t)
+        elif isinstance(t, Token):
+            return t
+        else:
+            raise ValueError("Tokens must be either str or Token.")
 
     @overrides
     def text_to_instance(
         self,
-        tokens: List[str],
+        text: str,
         sentiment: str = None,
         is_augment: bool = False,
         augment: int = 1
     ) -> Optional[Instance]:
-        """
-        We take `pre-tokenized` input here, because we might not have a tokenizer in this class.
-        # Parameters
-        tokens : `List[str]`, required.
-            The tokens in a given sentence.
-        sentiment : `str`, optional, (default = `None`).
-            The sentiment for this sentence.
-        # Returns
-        An `Instance` containing the following fields:
-            tokens : `TextField`
-                The tokens in the sentence or phrase.
-            label : `LabelField`
-                The sentiment label of the sentence or phrase.
-        """
-        assert isinstance(
-            tokens, list
-        )  # If tokens is a str, nothing breaks but the results are garbage, so we check.
-        if self._tokenizer is None:
+        tokens = self._tokenizer.tokenize(text)
 
-            def make_token(t: Union[str, Token]):
-                if isinstance(t, str):
-                    return Token(t)
-                elif isinstance(t, Token):
-                    return t
-                else:
-                    raise ValueError("Tokens must be either str or Token.")
-
-            tokens = [make_token(x) for x in tokens]
+        if self.is_transformer is False:
+            tokens = [self.make_token(x) for x in tokens]
         else:
-            tokens = self._tokenizer.tokenize(" ".join(tokens))
-        text_field = TextField(tokens, token_indexers=self._token_indexers)
-        fields: Dict[str, Field] = {"tokens": text_field}
+            pass
+
+        text_field = TextField(
+            tokens,
+            token_indexers=self._indexers
+        )
+        fields: Dict[str, Field] = {
+            self.field_names["text"][0]: text_field
+        }
 
         if is_augment is False:
             if sentiment is not None:
@@ -204,10 +229,10 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                         return None
                     else:
                         sentiment = "1"
-                fields["label"] = LabelField(sentiment)
+                fields[self.field_names["label"][0]] = LabelField(sentiment)
         else:
             if sentiment is not None:
-                fields["label"] = LabelField(sentiment)
+                fields[self.field_names["label"][0]] = LabelField(sentiment)
 
         augment_field = MetadataField(
             augment
@@ -222,16 +247,17 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
 
 
 def get_sst_ds(
+    sst_params: Dict,
     train_data_path="data/sst/train.txt",
     valid_data_path="data/sst/dev.txt",
     test_data_path="data/sst/test.txt",
-    train_data_proportion=1,
-    granularity="2-class"
 ):
-    sst_dataset_reader = StanfordSentimentTreeBankDatasetReader(granularity=granularity)
+    sst_dataset_reader = StanfordSentimentTreeBankDatasetReader(
+        sst_params
+    )
 
-    if train_data_proportion != 1:
-        train_ds = sst_dataset_reader.read(train_data_path + str(train_data_proportion))
+    if sst_params["proportion"] != 1:
+        train_ds = sst_dataset_reader.read(train_data_path + str(sst_params["proportion"]))
     else:
         train_ds = sst_dataset_reader.read(train_data_path)
     valid_ds = sst_dataset_reader.read(valid_data_path)

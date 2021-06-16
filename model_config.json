@@ -6,8 +6,12 @@
     "dataset": {
         "select_dataset": "sst",
         "sst": {
-            "granularity": "2-class",
-            "proportion": 1
+            "granularity": "5-class",
+            "transformer_model_name": "roberta-base",
+            "use_subtrees": false,
+            "proportion": 1,
+            "review_field_name": "tokens",
+            "label_field_name": "label"
         },
         "yelp": {
             "proportion": 0.1
@@ -16,26 +20,40 @@
 
     "text_model": {
         "embedder": {
-            "pretrained_embedding": {
+            "select_embedder": "transformer_embedder",
+            "word_embedder": {
+                "pretrained_embedding": {
+                    "embedding_dim": 300,
+                    "pretrained_filepath": "pretrained_weight/glove.840B.300d.txt"
+                },
                 "embedding_dim": 300,
-                "pretrained_filepath": "pretrained_weight/glove.840B.300d.txt"
+                "trainable": {
+                    "trainable": true,
+                    "projection_dim": 300
+                }
             },
-            "embedding_dim": 300,
-            "trainable": {
-                "trainable": true,
-                "projection_dim": 300
+            "transformer_embedder": {
+                "model_name": "roberta-base",
+                "train_parameters": true
             }
         },
         "encoder": {
-            "s2s_encoder": {
-                "hidden_size": 300,
-                "num_layers": 3,
-                "bidirectional": true
+            "select_encoder": "transformer_encoder",
+            "word_encoder": {
+                "s2s_encoder": {
+                    "hidden_size": 300,
+                    "num_layers": 3,
+                    "bidirectional": true
+                },
+                "s2v_encoder": {
+                    "hidden_size": 300,
+                    "num_layers": 3,
+                    "bidirectional": true
+                }
             },
-            "s2v_encoder": {
-                "hidden_size": 300,
-                "num_layers": 3,
-                "bidirectional": true
+            "transformer_encoder": {
+                "model_name": "roberta-base",
+                "dropout": 0.3
             }
         },
         "classifier": {
@@ -47,8 +65,8 @@
             }
         },
         "optimizer": {
-            "select_optimizer": "rmsprop",
-            "lr": 1e-5
+            "select_optimizer": "adamw",
+            "lr": 1e-6
         },
         "scheduler": {
             "select_scheduler": "reduce"
@@ -67,7 +85,7 @@
 
     "reinforcer": {
         "environment": {
-            "similarity_threshold": 0.95
+            "similarity_threshold": 0.8
         },
 
         "augmenter": {
@@ -77,23 +95,23 @@
             "select_augmenter": [0, 1, 2, 3],
             "delete_augmenter": {
                 "padded_idx": 0,
-                "oov_idx": 0,
+                "oov_idx": 24,
                 "magnitude": 0.1
             },
             "swap_augmenter": {
                 "padded_idx": 0,
-                "oov_idx": 0,
+                "oov_idx": 1,
                 "magnitude": 1
             },
             "replace_augmenter": {
                 "padded_idx": 0,
-                "oov_idx": 0,
-                "magnitude": 2
+                "oov_idx": 1,
+                "magnitude": 0.1
             },
             "insert_augmenter": {
                 "padded_idx": 0,
-                "oov_idx": 0,
-                "magnitude": 1
+                "oov_idx": 1,
+                "magnitude": 0.1
             }
         },
 
@@ -146,20 +164,20 @@
             ],
             "n_neighbors": 5,
             "n_components": 2,
-            "n_jobs": -1,
+            "n_jobs": 6,
             "save_fig_path": "model_record/visual/isomap/"
         }
     },
 
     "train_mode": {
-        "select_mode": 4,
+        "select_mode": 3,
         "0": {
             "text_trainer": {
                 "dataloader": {
-                    "batch_size": 600,
+                    "batch_size": 66,
                     "shuffle": true
                 },
-                "epochs": 39,
+                "epochs": 9,
                 "is_save": true
             },
             "reinforce_trainer": {
@@ -169,10 +187,10 @@
                 "epochs": 3,
                 "is_save": true,
                 "is_writer": true,
-                "batch_size": 360
+                "batch_size": 600
             },
             "augmented_instance_generator": {
-                "num_processor": 3,
+                "num_processor": 1,
                 "select_policy": [
                     "model_record/reinforce_model_weights/policy11",
                     "model_record/reinforce_model_weights/policy12",
@@ -232,7 +250,7 @@
                 "batch_size": 600
             },
             "augmented_instance_generator": {
-                "num_processor": 3,
+                "num_processor": 1,
                 "select_policy": [
                     "model_record/reinforce_model_weights/policy11",
                     "model_record/reinforce_model_weights/policy12",
@@ -283,19 +301,28 @@
                 "classifier": "model_record/text_model_weights/classifier.pkl"
             },
             "augmented_instance_generator": {
-                "num_processor": 3,
+                "num_processor": 1,
                 "select_policy": [
-                    "model_record/reinforce_model_weights/policy11",
-                    "model_record/reinforce_model_weights/policy12",
-                    "model_record/reinforce_model_weights/policy13",
-                    "model_record/reinforce_model_weights/policy21",
-                    "model_record/reinforce_model_weights/policy22",
                     "model_record/reinforce_model_weights/policy23",
                     "model_record/reinforce_model_weights/policy31",
                     "model_record/reinforce_model_weights/policy32",
                     "model_record/reinforce_model_weights/policy33"
                 ],
                 "save_name": [
+                    "model_record/augments/augment23",
+                    "model_record/augments/augment31",
+                    "model_record/augments/augment32",
+                    "model_record/augments/augment33"
+                ]
+            },
+            "text_finetuner": {
+                "dataloader": {
+                    "batch_size": 36,
+                    "shuffle": true
+                },
+                "epochs": 1200,
+                "is_save": false,
+                "augmented_instance": [
                     "model_record/augments/augment11",
                     "model_record/augments/augment12",
                     "model_record/augments/augment13",
@@ -305,17 +332,6 @@
                     "model_record/augments/augment31",
                     "model_record/augments/augment32",
                     "model_record/augments/augment33"
-                ]
-            },
-            "text_finetuner": {
-                "dataloader": {
-                    "batch_size": 600,
-                    "shuffle": true
-                },
-                "epochs": 48,
-                "is_save": false,
-                "augmented_instance": [
-                    "model_record/augments/augment56"
                 ]
             }
         },
@@ -327,7 +343,7 @@
             },
             "text_finetuner": {
                 "dataloader": {
-                    "batch_size": 600,
+                    "batch_size": 24,
                     "shuffle": true
                 },
                 "epochs": 1200,
@@ -354,10 +370,10 @@
             },
 
             "visualizer": {
-                "batch_size": 1200,
-                "proportion": 0.6,
+                "batch_size": 300,
+                "proportion": 1,
                 "sim_comparison": {
-                    "is_sim_comparison": true,
+                    "is_sim_comparison": false,
                     "comparison_dict": {
                         "sim_0.7": [
                             "sim_0.7/augments/augment11",

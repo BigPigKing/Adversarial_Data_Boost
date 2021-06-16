@@ -80,6 +80,17 @@ def generate_augmented_data(
         )
 
 
+def new_finetune_text_model(
+    mode_params: Dict,
+    dataset_dict: Dict,
+    text_model: torch.nn.Module
+):
+    return
+    # set_augments_to_dataset(
+    #     mode_params["text_finetuner"]["augmented_instance"]
+    # )
+
+
 def finetune_text_model(
     mode_params: Dict,
     dataset_dict: Dict,
@@ -219,11 +230,11 @@ def all_procedure_with_all_pretrained(
         reinforcer
     )
 
-    # finetune_text_model(
-    #     mode_params,
-    #     dataset_dict,
-    #     text_model
-    # )
+    finetune_text_model(
+        mode_params,
+        dataset_dict,
+        text_model
+    )
 
 
 def finetune_procedure(
@@ -281,13 +292,14 @@ def main(config_params):
     # Get Text Model
     text_model = set_and_get_text_model(
         config_params["text_model"],
+        dataset_dict,
         vocab
     )
 
     # Get Reinforcer
     reinforcer = set_and_get_reinforcer(
         config_params["reinforcer"],
-        dataset_dict["train_ds"],
+        dataset_dict,
         vocab,
         text_model
     )

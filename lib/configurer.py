@@ -7,21 +7,21 @@ from itertools import repeat
 
 from lib.dataset import get_sst_ds, get_yelp_ds
 from lib.embedder import TextEmbedder
-from lib.encoder import TextEncoder
+from lib.encoder import WordEncoder, TransformerEncoder
 from lib.classifier import TextClassifier
 from lib.model import SentimentModel
 from lib.trainer import TextTrainer, ReinforceTrainer
 from lib.augmenter import DeleteAugmenter, SwapAugmenter
 from lib.augmenter import IdentityAugmenter, InsertAugmenter, ReplaceAugmenter
 from lib.reinforcer import REINFORCER
-from lib.utils import get_synonyms_from_dataset, load_obj, get_and_save_augmentation_sentence, add_wordnet_to_vocab
+from lib.utils import get_synonyms_from_dataset, load_obj, get_and_save_augmentation_sentence
 from lib.visualizer import TSNEVisualizer, IsomapVisualizer
 
 from torch.utils.data import DataLoader
 from allennlp.data import allennlp_collate
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.data.dataset_readers.dataset_reader import AllennlpDataset, DatasetReader
-from allennlp.modules.token_embedders import Embedding
+from allennlp.modules.token_embedders import Embedding, PretrainedTransformerEmbedder
 from allennlp.training.metrics.categorical_accuracy import CategoricalAccuracy
 
 
@@ -39,8 +39,7 @@ def set_and_get_dataset(
 ) -> Dict:
     if dataset_params["select_dataset"] == "sst":
         train_ds, valid_ds, test_ds, dataset_reader = get_sst_ds(
-            granularity=dataset_params["sst"]["granularity"],
-            train_data_proportion=dataset_params["sst"]["proportion"]
+            dataset_params["sst"]
         )
 
         return {
@@ -70,9 +69,6 @@ def set_and_get_vocab(
 ) -> Vocabulary:
     vocab = Vocabulary.from_instances(dataset_dict["train_ds"])
 
-    # To be modified for pretrained instances proporse
-    vocab = add_wordnet_to_vocab(vocab)
-
     # Index Dataset
     dataset_dict["train_ds"].index_with(vocab)
     dataset_dict["valid_ds"].index_with(vocab)
@@ -81,35 +77,107 @@ def set_and_get_vocab(
     return vocab
 
 
+def set_and_get_word_embedder(
+    word_embedder_params: Dict,
+    vocab: Vocabulary
+):
+    if word_embedder_params["pretrained_embedding"]["pretrained_filepath"]:
+        print("Loading pretrained embedding for word_embedder ...")
+        pretrained_embedding = Embedding(
+            embedding_dim=word_embedder_params["pretrained_embedding"]["embedding_dim"],
+            pretrained_file=word_embedder_params["pretrained_embedding"]["pretrained_filepath"],
+            vocab=vocab,
+            trainable=word_embedder_params["trainable"]["trainable"],
+            projection_dim=word_embedder_params["trainable"]["projection_dim"]
+        )
+    else:
+        print("Random initialize embedding for word_embedder ...")
+        pretrained_embedding = Embedding(
+            embedding_dim=word_embedder_params["pretrained_embedding"]["embedding_dim"],
+            vocab=vocab,
+            trainable=word_embedder_params["trainable"]["trainable"],
+            projection_dim=word_embedder_params["trainable"]["projection_dim"]
+        )
+
+    token_indexers = {"tokens": pretrained_embedding}
+    word_embedder = TextEmbedder(token_indexers)
+
+    return word_embedder
+
+
+def set_and_get_transformer_embedder(
+    transformer_embedder_params: Dict
+):
+    print(
+        "Loading transformer pretrained embedding from \"{}\" ...".format(
+            transformer_embedder_params["model_name"]
+        )
+    )
+    pretrained_embedding = PretrainedTransformerEmbedder(
+        model_name=transformer_embedder_params["model_name"],
+        train_parameters=transformer_embedder_params["train_parameters"]
+    )
+
+    token_indexers = {"tokens": pretrained_embedding}
+    transformer_embedder = TextEmbedder(token_indexers)
+
+    return transformer_embedder
+
+
+def set_and_get_embedder(
+    embedder_params: Dict,
+    vocab: Vocabulary
+):
+    if embedder_params["select_embedder"] == "word_embedder":
+        embedder = set_and_get_word_embedder(
+            embedder_params["word_embedder"],
+            vocab
+        )
+    elif embedder_params["select_embedder"] == "transformer_embedder":
+        embedder = set_and_get_transformer_embedder(
+            embedder_params["transformer_embedder"]
+        )
+    else:
+        raise KeyError("Unknowm embedder's name!")
+
+    return embedder
+
+
+def set_and_get_encoder(
+    encoder_params: Dict,
+    embedder
+):
+    if encoder_params["select_encoder"] == "word_encoder":
+        encoder = WordEncoder(
+            input_size=embedder.get_output_dim(),
+            s2s_encoder_params=encoder_params["word_encoder"]["s2s_encoder"],
+            s2v_encoder_params=encoder_params["word_encoder"]["s2v_encoder"]
+        )
+    elif encoder_params["select_encoder"] == "transformer_encoder":
+        encoder = TransformerEncoder(
+            encoder_params["transformer_encoder"]
+        )
+    else:
+        raise KeyError("Unknown encoder name!")
+
+    return encoder
+
+
 def set_and_get_text_model(
     text_model_params: Dict,
+    dataset_dict: Dict,
     vocab: Vocabulary
 ) -> torch.nn.Module:
     # Set and get embedder
-    if text_model_params["embedder"]["pretrained_embedding"]["pretrained_filepath"]:
-        print("Loading pretrained embedding for embedder ...")
-        pretrained_embedding = Embedding(
-            embedding_dim=text_model_params["embedder"]["pretrained_embedding"]["embedding_dim"],
-            pretrained_file=text_model_params["embedder"]["pretrained_embedding"]["pretrained_filepath"],
-            vocab=vocab,
-            trainable=text_model_params["embedder"]["trainable"]["trainable"],
-            projection_dim=text_model_params["embedder"]["trainable"]["projection_dim"]
-        )
-        embedder = TextEmbedder(pretrained_embedding=pretrained_embedding)
-    else:
-        embedding = Embedding(
-            vocab=vocab,
-            embedding_dim=text_model_params["embedder"]["embedding_dim"],
-            trainable=text_model_params["embedder"]["trainable"]["trainable"],
-            projection_dim=text_model_params["embedder"]["trainable"]["projection_dim"]
-        )
-        embedder = TextEmbedder(pretrained_embedding=embedding)
+    embedder = set_and_get_embedder(
+        text_model_params["embedder"],
+        vocab
+    )
 
     # Set and get encoder
-    encoder = TextEncoder(
-        input_size=embedder.get_output_dim(),
-        s2s_encoder_params=text_model_params["encoder"]["s2s_encoder"],
-        s2v_encoder_params=text_model_params["encoder"]["s2v_encoder"]
+    encoder = set_and_get_encoder(
+        text_model_params["encoder"],
+        embedder
     )
 
     # Set and get classifier
@@ -145,6 +213,8 @@ def set_and_get_text_model(
         text_model_params["optimizer"]["select_optimizer"] = torch.optim.Adam
     elif text_model_params["optimizer"]["select_optimizer"] == "rmsprop":
         text_model_params["optimizer"]["select_optimizer"] = torch.optim.RMSprop
+    elif text_model_params["optimizer"]["select_optimizer"] == "adamw":
+        text_model_params["optimizer"]["select_optimizer"] = torch.optim.AdamW
     else:
         raise(KeyError)
 
@@ -153,7 +223,8 @@ def set_and_get_text_model(
         embedder,
         encoder,
         classifier,
-        text_model_params
+        text_model_params,
+        dataset_dict
     )
 
     return text_model
@@ -161,47 +232,52 @@ def set_and_get_text_model(
 
 def set_and_get_reinforcer(
     reinforcer_params: Dict,
-    train_ds: AllennlpDataset,
+    dataset_dict: Dict,
     vocab: Vocabulary,
     text_model: torch.nn.Module,
 ):
     # Get synonyms
-    if reinforcer_params["augmenter"]["synonyms"]["synonyms_filepath"]:
-        synonyms = load_obj(
-            reinforcer_params["augmenter"]["synonyms"]["synonyms_filepath"]
-        )
-    else:
-        synonyms = get_synonyms_from_dataset(train_ds)
+    # if reinforcer_params["augmenter"]["synonyms"]["synonyms_filepath"]:
+    #     synonyms = load_obj(
+    #         reinforcer_params["augmenter"]["synonyms"]["synonyms_filepath"]
+    #     )
+    # else:
+    #     synonyms = get_synonyms_from_dataset(dataset_dict["train_ds"])
+
+    # print(vocab)
+    # exit()
 
     # Get augmenter
     # Delete
     delete_augmenter = DeleteAugmenter(
-        reinforcer_params["augmenter"]["delete_augmenter"]
+        reinforcer_params["augmenter"]["delete_augmenter"],
+        vocab,
+        dataset_dict
     )
 
     # Swap
     swap_augmenter = SwapAugmenter(
-        reinforcer_params["augmenter"]["swap_augmenter"]
+        reinforcer_params["augmenter"]["swap_augmenter"],
+        vocab,
+        dataset_dict
     )
 
     # Replace
     replace_augmenter = ReplaceAugmenter(
+        reinforcer_params["augmenter"]["replace_augmenter"],
         vocab,
-        text_model.embedder,
-        synonyms,
-        reinforcer_params["augmenter"]["replace_augmenter"]
+        dataset_dict
     )
 
     # Insert
     insert_augmenter = InsertAugmenter(
+        reinforcer_params["augmenter"]["insert_augmenter"],
         vocab,
-        text_model.embedder,
-        synonyms,
-        reinforcer_params["augmenter"]["insert_augmenter"]
+        dataset_dict
     )
 
     # Identity
-    identity_augmenter = IdentityAugmenter()
+    identity_augmenter = IdentityAugmenter(dataset_dict["dataset_reader"].is_transformer)
 
     augmenters = [
         delete_augmenter,
@@ -241,7 +317,8 @@ def set_and_get_reinforcer(
         vocab,
         reinforcer_params["environment"],
         reinforcer_params["policy"],
-        reinforcer_params["REINFORCE"]
+        reinforcer_params["REINFORCE"],
+        dataset_dict
     )
 
     return reinforcer

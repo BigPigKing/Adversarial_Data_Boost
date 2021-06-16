@@ -1,18 +1,64 @@
 import torch
 
 from typing import Dict
+from overrides import overrides
 from allennlp.modules.seq2seq_encoders import GruSeq2SeqEncoder
-from allennlp.modules.seq2vec_encoders import GruSeq2VecEncoder
+from allennlp.modules.seq2vec_encoders import GruSeq2VecEncoder, BertPooler
 
 
-class TextEncoder(torch.nn.Module):
+class TextEncoder(
+    torch.nn.Module
+):
+    def __init__(
+        self
+    ):
+        super(TextEncoder, self).__init__()
+
+
+class TransformerEncoder(
+    torch.nn.Module
+):
+    def __init__(
+        self,
+        transformer_encoder_params: Dict
+    ):
+        super(TransformerEncoder, self).__init__()
+
+        self.pooler = BertPooler(
+            pretrained_model=transformer_encoder_params["model_name"],
+            dropout=transformer_encoder_params["dropout"]
+        )
+
+    @overrides
+    def forward(
+        self,
+        embed_X,
+        tokens_mask
+    ):
+        return self.pooler.forward(
+            embed_X,
+            tokens_mask
+        )
+
+    def get_input_dim(
+        self
+    ):
+        return self.pooler.get_input_dim()
+
+    def get_output_dim(
+        self
+    ):
+        return self.pooler.get_output_dim()
+
+
+class WordEncoder(torch.nn.Module):
     def __init__(
         self,
         input_size: int,
         s2s_encoder_params: Dict,
         s2v_encoder_params: Dict
     ):
-        super(TextEncoder, self).__init__()
+        super(WordEncoder, self).__init__()
 
         s2s_encoder = GruSeq2SeqEncoder(
             input_size=input_size,
