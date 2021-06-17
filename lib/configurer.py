@@ -14,11 +14,12 @@ from lib.trainer import TextTrainer, ReinforceTrainer
 from lib.augmenter import DeleteAugmenter, SwapAugmenter
 from lib.augmenter import IdentityAugmenter, InsertAugmenter, ReplaceAugmenter
 from lib.reinforcer import REINFORCER
-from lib.utils import get_synonyms_from_dataset, load_obj, get_and_save_augmentation_sentence
+from lib.utils import load_obj, generate_and_save_augmentation_texts
 from lib.visualizer import TSNEVisualizer, IsomapVisualizer
 
 from torch.utils.data import DataLoader
 from allennlp.data import allennlp_collate
+from allennlp.data.fields import TextField
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.data.dataset_readers.dataset_reader import AllennlpDataset, DatasetReader
 from allennlp.modules.token_embedders import Embedding, PretrainedTransformerEmbedder
@@ -197,9 +198,7 @@ def set_and_get_text_model(
 
     # Set and get text model
     # Instanize Criterions
-    text_model_params["criterions"]["classification_criterion"] = torch.nn.CrossEntropyLoss(
-        reduction="none"
-    )
+    text_model_params["criterions"]["classification_criterion"] = torch.nn.CrossEntropyLoss()
     text_model_params["criterions"]["contrastive_criterion"] = torch.nn.CosineEmbeddingLoss()
 
     # Instanize Evaluation
@@ -370,12 +369,7 @@ def set_and_get_synonyms(
     synonyms_params: Dict,
     train_ds: AllennlpDataset
 ):
-    if synonyms_params["synonyms_filepath"] == "sst_synonyms":
-        synonyms = load_obj("sst_synonyms")
-        return synonyms
-    else:
-        synonyms = get_synonyms_from_dataset(train_ds)
-        return synonyms
+    pass
 
 
 def set_and_get_augmenters(
@@ -454,7 +448,7 @@ def set_and_get_reinforce_trainer(
     return reinforce_trainer
 
 
-def set_and_save_augmented_sentences(
+def set_and_save_augmented_texts(
     augmented_instances_params: Dict,
     dataset_reader: DatasetReader,
     train_ds: AllennlpDataset,
@@ -462,7 +456,7 @@ def set_and_save_augmented_sentences(
 ):
     if augmented_instances_params["select_policy"] != "none":
         if augmented_instances_params["num_processor"] == 1:
-            get_and_save_augmentation_sentence(
+            generate_and_save_augmentation_texts(
                 augmented_instances_params["select_policy"],
                 augmented_instances_params["save_name"],
                 dataset_reader,
@@ -499,7 +493,7 @@ def set_and_save_augmented_sentences(
 
             with pool as p:
                 p.starmap(
-                    get_and_save_augmentation_sentence,
+                    generate_and_save_augmentation_texts,
                     zip(
                         policy_args,
                         save_name_args,
@@ -514,14 +508,28 @@ def set_and_save_augmented_sentences(
         pass
 
 
-def get_augmented_instances(
+def set_augments_to_dataset_instances(
+    dataset_dict: Dict,
     augmented_instances_save_names: List
 ):
-    total_augment_instances = []
-    for save_name in augmented_instances_save_names:
-        total_augment_instances += load_obj(save_name)
+    assert dataset_dict["dataset_reader"]._vocab is not None, "No vocab is given!"
 
-    return total_augment_instances
+    for save_name in augmented_instances_save_names:
+        augment_texts = load_obj(save_name)
+        print(augment_texts)
+
+        for instance, augment_text in zip(dataset_dict["train_ds"].instances, augment_texts):
+            field = TextField(
+                dataset_dict["dataset_reader"]._tokenizer.tokenize(
+                    augment_text
+                ),
+                dataset_dict["dataset_reader"]._indexers
+            )
+            instance.add_field(
+                save_name,
+                field,
+                dataset_dict["dataset_reader"]._vocab
+            )
 
 
 def set_and_get_visualizer(

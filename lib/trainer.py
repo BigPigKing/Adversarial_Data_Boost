@@ -154,7 +154,7 @@ class TextTrainer(Trainer):
             else:
                 pass
 
-            output_dict = self.train_model.forward(batch)
+            output_dict = self.train_model.forward(batch, is_finetune=False)
 
             num_of_batch += 1
             total_labels.append(batch["label"])
@@ -171,10 +171,14 @@ class TextTrainer(Trainer):
 
     def _fit_train(
         self,
-        train_data_loader: torch.utils.data.DataLoader
+        train_data_loader: torch.utils.data.DataLoader,
+        is_finetune: bool
     ):
         num_of_batch = 0
         total_loss = 0.0
+        total_origin_loss = 0.0
+        total_augment_loss = 0.0
+        total_consistency_loss = 0.0
         total_labels = []
         total_predicts = []
 
@@ -184,31 +188,57 @@ class TextTrainer(Trainer):
             else:
                 pass
 
-            output_dict = self.train_model.forward(batch)
+            output_dict = self.train_model.forward(
+                batch,
+                is_finetune
+            )
 
             # Optimize
-            self.train_model.optimize(
-                output_dict["classification_loss"],
-                [self.train_model.optimizer]
-            )
+            if is_finetune is False:
+                batch_loss = output_dict["classification_loss"]
+                self.train_model.optimize(
+                    batch_loss,
+                    [self.train_model.optimizer]
+                )
+                total_origin_loss += output_dict["classification_loss"]
+            else:
+                batch_loss = output_dict["origin_classification_loss"] + 0.3 * output_dict["total_augment_loss"] + 0.6 * output_dict["total_consistency_loss"]  # noqa
+                self.train_model.optimize(
+                    batch_loss,
+                    [self.train_model.optimizer]
+                )
+                total_origin_loss += output_dict["origin_classification_loss"]
+                total_augment_loss += output_dict["total_augment_loss"]
+                total_consistency_loss += output_dict["total_consistency_loss"]
 
             num_of_batch += 1
             total_labels.append(batch["label"])
             total_predicts.append(output_dict["predicts"])
-            total_loss += output_dict["classification_loss"].item()
+            total_loss += batch_loss.item()
 
         total_labels = torch.cat(total_labels, 0)
         total_predicts = torch.cat(total_predicts, 0)
 
         avg_loss = total_loss / num_of_batch
+        avg_origin_loss = total_origin_loss / num_of_batch
+        avg_augment_loss = total_augment_loss / num_of_batch
+        avg_consistency_loss = total_augment_loss / num_of_batch
         avg_acc = torch.true_divide(torch.sum(total_labels == total_predicts), total_labels.shape[0])
 
-        return avg_loss, avg_acc
+        loss_dict = {
+            "avg_loss": avg_loss,
+            "avg_origin_loss": avg_origin_loss,
+            "avg_augment_loss": avg_augment_loss,
+            "avg_consistency_loss": avg_consistency_loss
+        }
+
+        return loss_dict, avg_acc
 
     @overrides
     def fit(
         self,
         epochs: int,
+        is_finetune: bool,
         train_data_loader: torch.utils.data.DataLoader,
         valid_data_loader: torch.utils.data.DataLoader,
         test_data_loader: torch.utils.data.DataLoader = None
@@ -216,7 +246,7 @@ class TextTrainer(Trainer):
         for epoch in tqdm(range(epochs)):
             # Do training
             self.train_model.train()
-            train_avg_loss, train_avg_acc = self._fit_train(train_data_loader)
+            loss_dict, train_avg_acc = self._fit_train(train_data_loader, is_finetune)
 
             # Do validation
             self.train_model.eval()
@@ -234,13 +264,16 @@ class TextTrainer(Trainer):
             else:
                 pass
 
-            print("Epochs         : {}".format(epoch))
-            print("Training Loss  : {:.5f}".format(train_avg_loss))
-            print("Training Acc   : {:.5f}".format(train_avg_acc))
-            print("Validation Loss: {:.5f}".format(valid_avg_loss))
-            print("Validation Acc : {:.5f}".format(valid_avg_acc))
-            print("Testing Loss   : {:.5f}".format(test_avg_loss))
-            print("Testing Acc    : {:.5f}".format(test_avg_acc))
+            print("Epochs                   : {}".format(epoch))
+            print("Training Total Loss      : {:.5f}".format(loss_dict["avg_loss"]))
+            print("Training Origin Loss     : {:.5f}".format(loss_dict["avg_origin_loss"]))
+            print("Training Augment Loss    : {:.5f}".format(loss_dict["avg_augment_loss"]))
+            print("Training Consistency Loss: {:.5f}".format(loss_dict["avg_consistency_loss"]))
+            print("Training Acc             : {:.5f}".format(train_avg_acc))
+            print("Validation Loss          : {:.5f}".format(valid_avg_loss))
+            print("Validation Acc           : {:.5f}".format(valid_avg_acc))
+            print("Testing Loss             : {:.5f}".format(test_avg_loss))
+            print("Testing Acc              : {:.5f}".format(test_avg_acc))
             print("----------------------------------------------")
 
         if self.is_save is True:

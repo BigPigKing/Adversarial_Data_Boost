@@ -1,7 +1,6 @@
 import torch
 import pickle
 
-from tqdm import tqdm
 from allennlp.nn.util import move_to_device
 from torch.utils.data import DataLoader
 from nltk.corpus import wordnet
@@ -145,7 +144,7 @@ def augment_and_get_texts_from_dataset(
 
     augment_texts = []
 
-    for episode_idx, episode in enumerate(tqdm(dataloader)):
+    for episode_idx, episode in enumerate(dataloader):
         episode = move_to_device(episode, 0)
 
         # Get augment string from reinforcer
@@ -156,60 +155,7 @@ def augment_and_get_texts_from_dataset(
     return augment_texts
 
 
-def augment_and_get_instances_from_dataset(
-    dataset_reader: DatasetReader,
-    dataset: AllennlpDataset,
-    reinforcer
-):
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=allennlp_collate)
-
-    augment_instances = []
-
-    for episode_idx, episode in enumerate(tqdm(dataloader)):
-        episode = move_to_device(episode, 0)
-
-        # Get augment tokens from reinforcer
-        aug_tokens = reinforcer.augment(episode["tokens"])  # Because we only have one sentence in this scenario
-
-        # text to instance
-        augment_instance = dataset_reader.text_to_instance(
-            aug_tokens,
-            reinforcer.vocab.get_token_from_index(
-                episode["label"].int().item(),
-                namespace="labels"
-            ),
-            augment=reinforcer.env.similarity_threshold,
-            is_augment=True
-        )
-        augment_instances.append(augment_instance)
-
-    # return dataset
-    return augment_instances
-
-
-def get_synonyms_from_dataset(
-    dataset: AllennlpDataset
-):
-    synonym_dict = {}
-
-    for instance in dataset.instances:
-        for true_token in instance["tokens"]:
-            token = str(true_token)
-            synonyms = set()
-
-            for syn in wordnet.synsets(token):
-                for synonym_lemma in syn.lemmas():
-                    synonym = synonym_lemma.name().replace('_', ' ').replace('-', ' ').lower()
-                    synonym = "".join([char for char in synonym if char in ' qwertyuiopasdfghjklzxcvbnm'])
-                    synonyms.add(tuple(synonym.split()))
-
-            synonyms = list(synonyms)
-            synonym_dict[token] = synonyms
-
-    return synonym_dict
-
-
-def new_save_augmentation_sentence(
+def generate_and_save_augmentation_texts(
     policy_weight_paths: List[str],
     saved_names: List[str],
     dataset_reader: DatasetReader,
@@ -225,63 +171,18 @@ def new_save_augmentation_sentence(
         reinforcer.policy.load_state_dict(torch.load(policy_weight_path + ".pkl"))
 
         # Get Augmented Sentence
-        augment_texts = augment_and_get_texts_from_dataset(
+        augmentation_texts = augment_and_get_texts_from_dataset(
             dataset_reader,
             train_dataset,
             reinforcer
         )
 
         # Save obj
-        save_obj(augment_texts, saved_name)
+        save_obj(augmentation_texts, saved_name)
 
         print("--- %s seconds ---" % (time.time() - start_time))
 
     return
-
-
-def get_and_save_augmentation_sentence(
-    policy_weight_paths: List[str],
-    saved_names: List[str],
-    dataset_reader: DatasetReader,
-    train_dataset: AllennlpDataset,
-    reinforcer
-):
-    total_augment_instances = []
-
-    for policy_weight_path, saved_name in zip(policy_weight_paths, saved_names):
-        import time
-        start_time = time.time()
-
-        print("Generating augmented instances with {}".format(policy_weight_path))
-        # Load pretrained_weight
-        reinforcer.policy.load_state_dict(torch.load(policy_weight_path + ".pkl"))
-
-        # Get Augmented Sentence
-        augment_instances = augment_and_get_instances_from_dataset(
-            dataset_reader,
-            train_dataset,
-            reinforcer
-        )
-
-        # Save obj
-        save_obj(augment_instances, saved_name)
-
-        # Collect augmented instances
-        total_augment_instances += augment_instances
-        print("--- %s seconds ---" % (time.time() - start_time))
-
-    return total_augment_instances
-
-
-def set_augments_to_dataset(
-    dataset: AllennlpDataset,
-    augmented_instances_save_names: List
-):
-    for save_name in augmented_instances_save_names:
-        augment_texts = load_obj(save_name)
-
-        for instance in dataset.instances:
-            instance.add_field
 
 
 def save_obj(

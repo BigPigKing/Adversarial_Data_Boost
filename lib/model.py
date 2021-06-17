@@ -1,6 +1,7 @@
 import torch
 
-from typing import Dict
+from .loss import JsdCrossEntropy
+from typing import List, Dict
 from overrides import overrides
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.nn.util import get_text_field_mask
@@ -29,6 +30,7 @@ class SentimentModel(torch.nn.Module):
         # Loss initiailization
         self.classification_criterion = sentiment_model_params["criterions"]["classification_criterion"]
         self.contrastive_criterion = sentiment_model_params["criterions"]["contrastive_criterion"]
+        self.consistency_criterion = JsdCrossEntropy()
 
         # Optimizer initialization
         self.optimizer = sentiment_model_params["optimizer"]["select_optimizer"](
@@ -56,18 +58,19 @@ class SentimentModel(torch.nn.Module):
         # Field Names
         self.text_field_names = dataset_dict["dataset_reader"].field_names["text"]
         self.label_field_names = dataset_dict["dataset_reader"].field_names["label"]
+        self.augment_field_names = None
 
-    @overrides
-    def forward(
+    def set_augment_field_names(
         self,
-        batch: Dict[str, torch.Tensor]
+        augment_field_names: List[str]
+    ):
+        self.augment_field_names = augment_field_names
+
+    def _get_classification_loss_and_predicts(
+        self,
+        token_X: torch.Tensor,
+        label_Y: torch.Tensor
     ) -> Dict:
-        output_dict = {}
-
-        # Get input from dict
-        token_X = batch[self.text_field_names[0]]
-        label_Y = batch[self.label_field_names[0]]
-
         # Embedded first
         embed_X = self.embedder(token_X)
 
@@ -89,12 +92,75 @@ class SentimentModel(torch.nn.Module):
             label_Y
         )
 
-        # Weighted the loss of augmented data
-        batch["augment"] = torch.tensor(batch["augment"]).to(classification_loss.get_device())
-        classification_loss = torch.mean(classification_loss)
+        return classification_loss, pred_Y
+
+    def _standard_forward(
+        self,
+        batch: Dict[str, torch.Tensor]
+    ) -> Dict:
+        output_dict = {}
+
+        # Get input from dict
+        token_X = batch[self.text_field_names[0]]
+        label_Y = batch[self.label_field_names[0]]
+
+        # Get Cross entropy Loss
+        classification_loss, predicts = self._get_classification_loss_and_predicts(
+            token_X,
+            label_Y
+        )
 
         output_dict["classification_loss"] = classification_loss
-        output_dict["predicts"] = torch.argmax(pred_Y, dim=1)
+        output_dict["predicts"] = torch.argmax(predicts, dim=1)
+
+        return output_dict
+
+    def _finetune_forward(
+        self,
+        batch: Dict[str, torch.Tensor]
+    ) -> Dict:
+        output_dict = {}
+
+        # Get input from dict
+        origin_token_X = batch[self.text_field_names[0]]
+        origin_label_Y = batch[self.label_field_names[0]]
+
+        # Get Origin Cross entropy Loss
+        origin_classification_loss, origin_predicts = self._get_classification_loss_and_predicts(
+            origin_token_X,
+            origin_label_Y
+        )
+
+        # Get Consistency Loss and Augmented Cross entropy Loss
+        assert self.augment_field_names is not None, "Augmented field names is not given!"
+
+        total_augment_loss = 0
+        total_consistency_loss = 0
+        for augment_field_name in self.augment_field_names:
+            augment_classification_loss, augment_predicts = self._get_classification_loss_and_predicts(
+                batch[augment_field_name],
+                origin_label_Y
+            )
+            total_augment_loss += augment_classification_loss
+            total_consistency_loss += self.consistency_criterion(origin_predicts, augment_predicts)
+
+        output_dict["origin_classification_loss"] = origin_classification_loss
+        output_dict["total_augment_loss"] = total_augment_loss
+        output_dict["total_consistency_loss"] = total_consistency_loss
+        output_dict["predicts"] = torch.argmax(origin_predicts, dim=1)
+
+        return output_dict
+
+    @overrides
+    def forward(
+        self,
+        batch: Dict[str, torch.Tensor],
+        is_finetune: bool
+    ) -> Dict:
+        if is_finetune is False:
+            output_dict = self._standard_forward(batch)
+        else:
+            output_dict = self._finetune_forward(batch)
 
         return output_dict
 

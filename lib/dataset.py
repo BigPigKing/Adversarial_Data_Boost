@@ -13,7 +13,7 @@ from allennlp.common.checks import ConfigurationError
 from allennlp.data import DatasetReader, Instance, Vocabulary
 from allennlp.data.tokenizers import Tokenizer, SpacyTokenizer, Token, PretrainedTransformerTokenizer
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer, PretrainedTransformerIndexer
-from allennlp.data.fields import LabelField, TextField, Field, MetadataField
+from allennlp.data.fields import LabelField, TextField, Field
 
 logger = logging.getLogger(__name__)
 
@@ -194,9 +194,7 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
     def text_to_instance(
         self,
         text: str,
-        sentiment: str = None,
-        is_augment: bool = False,
-        augment: int = 1
+        sentiment: str = None
     ) -> Optional[Instance]:
         tokens = self._tokenizer.tokenize(text)
 
@@ -213,32 +211,25 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
             self.field_names["text"][0]: text_field
         }
 
-        if is_augment is False:
-            if sentiment is not None:
-                if self._granularity == "3-class":
-                    if int(sentiment) < 2:
-                        sentiment = "0"
-                    elif int(sentiment) == 2:
-                        sentiment = "1"
-                    else:
-                        sentiment = "2"
-                elif self._granularity == "2-class":
-                    if int(sentiment) < 2:
-                        sentiment = "0"
-                    elif int(sentiment) == 2:
-                        return None
-                    else:
-                        sentiment = "1"
-                fields[self.field_names["label"][0]] = LabelField(sentiment)
+        if sentiment is not None:
+            if self._granularity == "3-class":
+                if int(sentiment) < 2:
+                    sentiment = "0"
+                elif int(sentiment) == 2:
+                    sentiment = "1"
+                else:
+                    sentiment = "2"
+            elif self._granularity == "2-class":
+                if int(sentiment) < 2:
+                    sentiment = "0"
+                elif int(sentiment) == 2:
+                    return None
+                else:
+                    sentiment = "1"
+            fields[self.field_names["label"][0]] = LabelField(sentiment)
         else:
             if sentiment is not None:
                 fields[self.field_names["label"][0]] = LabelField(sentiment)
-
-        augment_field = MetadataField(
-            augment
-        )
-
-        fields["augment"] = augment_field
 
         return Instance(fields)
 

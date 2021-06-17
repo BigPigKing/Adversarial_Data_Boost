@@ -1,3 +1,4 @@
+import os
 import torch
 
 from typing import Dict
@@ -6,7 +7,10 @@ from lib.configurer import set_and_get_dataset, set_and_get_vocab
 from lib.configurer import set_and_get_text_model, set_and_get_reinforcer, set_and_get_visualizer
 from lib.configurer import set_and_get_text_trainer, set_and_get_reinforce_trainer
 from lib.configurer import set_and_get_text_dataloader, set_and_get_reinforce_dataloader
-from lib.configurer import set_and_save_augmented_sentences, get_augmented_instances
+from lib.configurer import set_and_save_augmented_texts, set_augments_to_dataset_instances
+
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def train_text_model(
@@ -72,7 +76,7 @@ def generate_augmented_data(
     reinforcer.eval()
 
     with torch.no_grad():
-        set_and_save_augmented_sentences(
+        set_and_save_augmented_texts(
             mode_params["augmented_instance_generator"],
             dataset_dict["dataset_reader"],
             dataset_dict["train_ds"],
@@ -80,27 +84,15 @@ def generate_augmented_data(
         )
 
 
-def new_finetune_text_model(
-    mode_params: Dict,
-    dataset_dict: Dict,
-    text_model: torch.nn.Module
-):
-    return
-    # set_augments_to_dataset(
-    #     mode_params["text_finetuner"]["augmented_instance"]
-    # )
-
-
 def finetune_text_model(
     mode_params: Dict,
     dataset_dict: Dict,
     text_model: torch.nn.Module
 ):
-    augmented_instances = get_augmented_instances(
+    set_augments_to_dataset_instances(
+        dataset_dict,
         mode_params["text_finetuner"]["augmented_instance"]
     )
-
-    dataset_dict["train_ds"].instances += augmented_instances
 
     # Get Text Trainer
     text_trainer = set_and_get_text_trainer(
@@ -118,8 +110,12 @@ def finetune_text_model(
 
     # Train Text Model
     text_model.train()
+    text_model.set_augment_field_names(
+        mode_params["text_finetuner"]["augmented_instance"]
+    )
     text_trainer.fit(
         mode_params["text_finetuner"]["epochs"],
+        True,
         train_dataloader,
         valid_dataloader,
         test_dataloader
