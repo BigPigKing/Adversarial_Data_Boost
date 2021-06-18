@@ -37,6 +37,7 @@ def train_text_model(
     # Train Text Model
     text_trainer.fit(
         mode_params["text_trainer"]["epochs"],
+        False,
         train_dataloader,
         valid_dataloader,
         test_dataloader
