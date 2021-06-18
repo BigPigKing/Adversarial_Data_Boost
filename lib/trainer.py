@@ -202,7 +202,7 @@ class TextTrainer(Trainer):
                 )
                 total_origin_loss += output_dict["classification_loss"]
             else:
-                batch_loss = output_dict["origin_classification_loss"] + 0.3 * output_dict["total_augment_loss"] + 0.6 * output_dict["total_consistency_loss"]  # noqa
+                batch_loss = output_dict["origin_classification_loss"] + 0.18 * output_dict["total_augment_loss"] + output_dict["total_consistency_loss"]  # noqa
                 self.train_model.optimize(
                     batch_loss,
                     [self.train_model.optimizer]
@@ -222,7 +222,7 @@ class TextTrainer(Trainer):
         avg_loss = total_loss / num_of_batch
         avg_origin_loss = total_origin_loss / num_of_batch
         avg_augment_loss = total_augment_loss / num_of_batch
-        avg_consistency_loss = total_augment_loss / num_of_batch
+        avg_consistency_loss = total_consistency_loss / num_of_batch
         avg_acc = torch.true_divide(torch.sum(total_labels == total_predicts), total_labels.shape[0])
 
         loss_dict = {

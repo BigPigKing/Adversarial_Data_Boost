@@ -145,7 +145,7 @@ class SentimentModel(torch.nn.Module):
             total_consistency_loss += self.consistency_criterion(origin_predicts, augment_predicts)
 
         output_dict["origin_classification_loss"] = origin_classification_loss
-        output_dict["total_augment_loss"] = total_augment_loss
+        output_dict["total_augment_loss"] = total_augment_loss / len(self.augment_field_names)
         output_dict["total_consistency_loss"] = total_consistency_loss
         output_dict["predicts"] = torch.argmax(origin_predicts, dim=1)
 

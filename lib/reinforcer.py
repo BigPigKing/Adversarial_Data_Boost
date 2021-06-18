@@ -398,7 +398,7 @@ class REINFORCER(torch.nn.Module):
         )
         output_dict["augment_sentence"] = get_sentence_from_text_field_tensors(
             self.vocab,
-            state,
+            self.env.safe_state,
             self.is_transformer
         )
         output_dict["actions"] = actions

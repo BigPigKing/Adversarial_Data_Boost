@@ -516,7 +516,7 @@ def set_augments_to_dataset_instances(
 
     for save_name in augmented_instances_save_names:
         augment_texts = load_obj(save_name)
-        print(augment_texts)
+        print(augment_texts[400])
 
         for instance, augment_text in zip(dataset_dict["train_ds"].instances, augment_texts):
             field = TextField(
