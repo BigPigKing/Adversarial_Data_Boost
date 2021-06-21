@@ -14,7 +14,10 @@
             "label_field_name": "label"
         },
         "yelp": {
-            "proportion": 0.1
+            "proportion": 1,
+            "transformer_model_name": "roberta-base",
+            "review_field_name": "tokens",
+            "label_field_name": "label"
         }
     },
 

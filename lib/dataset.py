@@ -11,23 +11,49 @@ from nltk.tree import Tree
 from allennlp.common.file_utils import cached_path
 from allennlp.common.checks import ConfigurationError
 from allennlp.data import DatasetReader, Instance, Vocabulary
-from allennlp.data.tokenizers import Tokenizer, SpacyTokenizer, Token, PretrainedTransformerTokenizer
-from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer, PretrainedTransformerIndexer
+from allennlp.data.tokenizers import Token, PretrainedTransformerTokenizer
+from allennlp.data.token_indexers import SingleIdTokenIndexer, PretrainedTransformerIndexer
 from allennlp.data.fields import LabelField, TextField, Field
 
 logger = logging.getLogger(__name__)
 
 
+@DatasetReader.register("yelp_tokens")
 class YelpReviewDatasetReader(DatasetReader):
     def __init__(
         self,
-        token_indexers: Dict[str, TokenIndexer] = None,
-        tokenizer: Optional[Tokenizer] = None,
+        yelp_params: Dict,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self._token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
-        self._tokenizer = tokenizer or SpacyTokenizer(split_on_spaces=True)
+
+        if yelp_params["transformer_model_name"] is None:
+            self._indexers = {
+                "tokens": SingleIdTokenIndexer()
+            }
+            self._tokenizer = WordTokenizer()
+            self._vocab = None
+            self.is_transformer = False
+        else:
+            self._indexers = {
+                "tokens": PretrainedTransformerIndexer(
+                    yelp_params["transformer_model_name"]
+                )
+            }
+            self._tokenizer = PretrainedTransformerTokenizer(
+                yelp_params["transformer_model_name"]
+            )
+            self._vocab = Vocabulary.from_pretrained_transformer(
+                yelp_params["transformer_model_name"]
+            )
+            self.is_transformer = True
+        self.detokenizer = WordTokenizer()
+
+        self.field_names = {
+            "text": [yelp_params["review_field_name"]],
+            "label": [yelp_params["label_field_name"]],
+            "augments": []
+        }  # Warning: Augments now only suitable for one original field
 
     @overrides
     def _read(self, file_path):
@@ -44,35 +70,42 @@ class YelpReviewDatasetReader(DatasetReader):
                 else:
                     pass
 
+    def make_token(
+        self,
+        t: Union[str, Token]
+    ):
+        if isinstance(t, str):
+            return Token(t)
+        elif isinstance(t, Token):
+            return t
+        else:
+            raise ValueError("Tokens must be either str or Token.")
+
     @overrides
-    def text_to_instance(self, review: str, sentiment: str = None) -> Optional[Instance]:
-        """
-        We take `pre-tokenized` input here, because we might not have a tokenizer in this class.
-        # Parameters
-        tokens : `List[str]`, required.
-            The tokens in a given sentence.
-        sentiment : `str`, optional, (default = `None`).
-            The sentiment for this sentence.
-        # Returns
-        An `Instance` containing the following fields:
-            tokens : `TextField`
-                The tokens in the sentence or phrase.
-            label : `LabelField`
-                The sentiment label of the sentence or phrase.
-        """
-        assert isinstance(
-            review, str
+    def text_to_instance(
+        self,
+        text: str,
+        sentiment: str = None
+    ) -> Optional[Instance]:
+        tokens = self._tokenizer.tokenize(text)
+
+        if self.is_transformer is False:
+            tokens = [self.make_token(x) for x in tokens]
+        else:
+            pass
+
+        text_field = TextField(
+            tokens,
+            token_indexers=self._indexers
         )
-
-        tokens = self._tokenizer.tokenize(review)
-
-        text_field = TextField(tokens, token_indexers=self._token_indexers)
-        label_field = LabelField(sentiment)
-
         fields: Dict[str, Field] = {
-            "tokens": text_field,
-            "label": label_field
+            self.field_names["text"][0]: text_field
         }
+
+        if sentiment is not None:
+            fields[self.field_names["label"][0]] = LabelField(sentiment)
+        else:
+            pass
 
         return Instance(fields)
 
@@ -228,8 +261,7 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                     sentiment = "1"
             fields[self.field_names["label"][0]] = LabelField(sentiment)
         else:
-            if sentiment is not None:
-                fields[self.field_names["label"][0]] = LabelField(sentiment)
+            pass
 
         return Instance(fields)
 

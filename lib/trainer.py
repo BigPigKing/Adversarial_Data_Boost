@@ -138,6 +138,10 @@ class TextTrainer(Trainer):
         self.is_save = text_trainer_params["is_save"]
         self.accumulated_step = text_trainer_params["accumulated_step"]
 
+        self.augment_loss_multiplier = 0.6
+        self.consistency_loss_multiplier = 1
+        self.contrastive_loss_multiplier = 0.3
+
         self.GPU = next(train_model.parameters()).get_device()
 
     def _fit_valid(
@@ -199,7 +203,7 @@ class TextTrainer(Trainer):
                 batch_loss = output_dict["classification_loss"]
                 total_origin_loss += output_dict["classification_loss"]
             else:
-                batch_loss = output_dict["origin_classification_loss"] + 0.18 * output_dict["total_augment_loss"] + output_dict["total_consistency_loss"]  # noqa
+                batch_loss = output_dict["origin_classification_loss"] + self.augment_loss_multiplier * output_dict["total_augment_loss"] + self.consistency_loss_multiplier * output_dict["total_consistency_loss"]  # noqa
                 total_origin_loss += output_dict["origin_classification_loss"]
                 total_augment_loss += output_dict["total_augment_loss"]
                 total_consistency_loss += output_dict["total_consistency_loss"]
@@ -207,13 +211,13 @@ class TextTrainer(Trainer):
             # Accumulated
             if (batch_idx+1) % self.accumulated_step == 0:
                 self.train_model.optimize(
-                    batch_loss,
+                    batch_loss / self.accumulated_step,
                     [self.train_model.optimizer],
                     is_step=True
                 )
             else:
                 self.train_model.optimize(
-                    batch_loss,
+                    batch_loss / self.accumulated_step,
                     [self.train_model.optimizer],
                     is_step=False
                 )
