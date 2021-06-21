@@ -167,7 +167,8 @@ class SentimentModel(torch.nn.Module):
     def optimize(
         self,
         loss,
-        optimizers
+        optimizers,
+        is_step: bool = True,
     ):
         loss.backward()
 
@@ -180,8 +181,12 @@ class SentimentModel(torch.nn.Module):
                 )
             else:
                 pass
-            optimizer.step()
-            optimizer.zero_grad()
+
+            if is_step is True:
+                optimizer.step()
+                optimizer.zero_grad()
+            else:
+                pass
 
 
 def main():

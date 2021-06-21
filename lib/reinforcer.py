@@ -3,6 +3,7 @@ import numpy as np
 
 from overrides import overrides
 from typing import List, Dict
+from .loss import JsdCrossEntropy
 from .utils import get_sentence_from_text_field_tensors
 from .augmenter import Augmenter
 from allennlp.data import Vocabulary
@@ -39,7 +40,7 @@ class Environment(torch.nn.Module):
 
         # Calculation Function
         self.cos_similarity = torch.nn.CosineSimilarity()
-        self.mse_loss_reward = torch.nn.MSELoss()
+        self.reinforcer_reward = JsdCrossEntropy()
 
     def get_current_state(
         self
@@ -104,7 +105,7 @@ class Environment(torch.nn.Module):
         if self.cos_similarity(self.encoded_initial_state, encoded_augmented_state) < self.similarity_threshold:
             done = True
             safe = False
-            reward = -0.72
+            reward = -0.024
         else:
             training_status = self.training
             self.eval()
@@ -114,17 +115,11 @@ class Environment(torch.nn.Module):
                 self.train()
             else:
                 pass
-            reward = np.log(
-                self.mse_loss_reward(
-                    self.initial_prediction.detach(),
-                    augmented_prediction.detach()
-                ).cpu().item()
-            )
-            reward = np.clip(reward, -20, -1)
-            reward = 1 / - reward
+
+            reward = self.reinforcer_reward(self.initial_prediction, augmented_prediction).detach().cpu().item()
 
         # Penelty Reward
-        penelty_reward = 0.15 * self.current_step / self.max_step
+        penelty_reward = 0.012 * (self.current_step / self.max_step)
 
         # Record Step
         self.current_step += 1
@@ -146,7 +141,7 @@ class Environment(torch.nn.Module):
         # Last action will be "stop"
         if action == len(self.augmenter_list) - 1:
             done = True
-            reward = 0.24
+            reward = 0.006
         else:
             augmented_state = self.augmenter_list[action].augment(self.current_state)
             reward, done = self._get_env_respond(augmented_state)

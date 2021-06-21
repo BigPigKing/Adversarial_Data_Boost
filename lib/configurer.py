@@ -331,20 +331,20 @@ def set_and_get_text_dataloader(
 ):
     train_data_loader = DataLoader(
         train_ds,
-        batch_size=dataloader_params["batch_size"],
+        batch_size=dataloader_params["train_batch_size"],
         shuffle=dataloader_params["shuffle"],
         collate_fn=allennlp_collate
     )
 
     valid_data_loader = DataLoader(
         valid_ds,
-        batch_size=dataloader_params["batch_size"],
+        batch_size=dataloader_params["valid_batch_size"],
         collate_fn=allennlp_collate
     )
 
     test_data_loader = DataLoader(
         test_ds,
-        batch_size=dataloader_params["batch_size"],
+        batch_size=dataloader_params["test_batch_size"],
         collate_fn=allennlp_collate
     )
 
@@ -428,8 +428,8 @@ def set_and_get_text_trainer(
     sentiment_model: SentimentModel
 ):
     text_trainer = TextTrainer(
-        sentiment_model,
-        is_save=text_trainer_params["is_save"]
+        text_trainer_params,
+        sentiment_model
     )
 
     return text_trainer

@@ -130,12 +130,13 @@ class ReinforceTrainer(Trainer):
 class TextTrainer(Trainer):
     def __init__(
         self,
+        text_trainer_params: Dict,
         train_model: torch.nn.Module,
-        is_save: bool = False
     ):
         super(TextTrainer, self).__init__()
         self.train_model = train_model
-        self.is_save = is_save
+        self.is_save = text_trainer_params["is_save"]
+        self.accumulated_step = text_trainer_params["accumulated_step"]
 
         self.GPU = next(train_model.parameters()).get_device()
 
@@ -196,25 +197,33 @@ class TextTrainer(Trainer):
             # Optimize
             if is_finetune is False:
                 batch_loss = output_dict["classification_loss"]
-                self.train_model.optimize(
-                    batch_loss,
-                    [self.train_model.optimizer]
-                )
                 total_origin_loss += output_dict["classification_loss"]
             else:
                 batch_loss = output_dict["origin_classification_loss"] + 0.18 * output_dict["total_augment_loss"] + output_dict["total_consistency_loss"]  # noqa
-                self.train_model.optimize(
-                    batch_loss,
-                    [self.train_model.optimizer]
-                )
                 total_origin_loss += output_dict["origin_classification_loss"]
                 total_augment_loss += output_dict["total_augment_loss"]
                 total_consistency_loss += output_dict["total_consistency_loss"]
+
+            # Accumulated
+            if (batch_idx+1) % self.accumulated_step == 0:
+                self.train_model.optimize(
+                    batch_loss,
+                    [self.train_model.optimizer],
+                    is_step=True
+                )
+            else:
+                self.train_model.optimize(
+                    batch_loss,
+                    [self.train_model.optimizer],
+                    is_step=False
+                )
 
             num_of_batch += 1
             total_labels.append(batch["label"])
             total_predicts.append(output_dict["predicts"])
             total_loss += batch_loss.item()
+
+        self.train_model.optimizer.zero_grad()
 
         total_labels = torch.cat(total_labels, 0)
         total_predicts = torch.cat(total_predicts, 0)

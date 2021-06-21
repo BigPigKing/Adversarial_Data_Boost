@@ -66,7 +66,7 @@
         },
         "optimizer": {
             "select_optimizer": "adamw",
-            "lr": 1e-5
+            "lr": 1e-6
         },
         "scheduler": {
             "select_scheduler": "reduce"
@@ -174,9 +174,12 @@
         "0": {
             "text_trainer": {
                 "dataloader": {
-                    "batch_size": 66,
+                    "train_batch_size": 66,
+                    "valid_batch_size": 66,
+                    "test_batch_size": 66,
                     "shuffle": true
                 },
+                "accumulated_step": 30,
                 "epochs": 21,
                 "is_save": true
             },
@@ -216,9 +219,12 @@
             },
             "text_finetuner": {
                 "dataloader": {
-                    "batch_size": 600,
+                    "train_batch_size": 9,
+                    "valid_batch_size": 66,
+                    "test_batch_size": 66,
                     "shuffle": true
                 },
+                "accumulated_step": 30,
                 "epochs": 36,
                 "is_save": false,
                 "augmented_instance": [
@@ -276,9 +282,12 @@
             },
             "text_finetuner": {
                 "dataloader": {
-                    "batch_size": 600,
+                    "train_batch_size": 9,
+                    "valid_batch_size": 66,
+                    "test_batch_size": 66,
                     "shuffle": true
                 },
+                "accumulated_step": 30,
                 "epochs": 24,
                 "is_save": false,
                 "augmented_instance": [
@@ -327,9 +336,12 @@
             },
             "text_finetuner": {
                 "dataloader": {
-                    "batch_size": 36,
+                    "train_batch_size": 9,
+                    "valid_batch_size": 66,
+                    "test_batch_size": 66,
                     "shuffle": true
                 },
+                "accumulated_step": 30,
                 "epochs": 1200,
                 "is_save": false,
                 "augmented_instance": [
@@ -353,15 +365,15 @@
             },
             "text_finetuner": {
                 "dataloader": {
-                    "batch_size": 9,
+                    "train_batch_size": 3,
+                    "valid_batch_size": 60,
+                    "test_batch_size": 60,
                     "shuffle": true
                 },
+                "accumulated_step": 200,
                 "epochs": 1200,
                 "is_save": false,
                 "augmented_instance": [
-                    "model_record/augments/augment11",
-                    "model_record/augments/augment12",
-                    "model_record/augments/augment13",
                     "model_record/augments/augment21",
                     "model_record/augments/augment22",
                     "model_record/augments/augment31",
