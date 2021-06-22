@@ -10,6 +10,7 @@
             "transformer_model_name": "roberta-base",
             "use_subtrees": false,
             "proportion": 1,
+            "max_length": 500,
             "review_field_name": "tokens",
             "label_field_name": "label"
         },
@@ -175,7 +176,7 @@
     },
 
     "train_mode": {
-        "select_mode": 0,
+        "select_mode": 3,
         "0": {
             "text_trainer": {
                 "dataloader": {
@@ -370,19 +371,23 @@
             },
             "text_finetuner": {
                 "dataloader": {
-                    "train_batch_size": 3,
+                    "train_batch_size": 4,
                     "valid_batch_size": 60,
                     "test_batch_size": 60,
                     "shuffle": true
                 },
-                "accumulated_step": 200,
-                "epochs": 1200,
+                "accumulated_step": 8,
+                "epochs": 12,
                 "is_save": false,
                 "augmented_instance": [
+                    "model_record/augments/augment11",
                     "model_record/augments/augment21",
-                    "model_record/augments/augment22",
                     "model_record/augments/augment31",
+                    "model_record/augments/augment12",
+                    "model_record/augments/augment22",
                     "model_record/augments/augment32",
+                    "model_record/augments/augment13",
+                    "model_record/augments/augment23",
                     "model_record/augments/augment33"
                 ]
             }

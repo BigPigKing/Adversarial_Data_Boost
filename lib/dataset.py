@@ -171,6 +171,7 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
             self.is_transformer = True
         self._use_subtrees = sst_params["use_subtrees"]
         self.detokenizer = WordTokenizer()
+        self.max_length = sst_params["max_length"]
 
         allowed_granularities = ["5-class", "3-class", "2-class"]
 
@@ -237,7 +238,7 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
             pass
 
         text_field = TextField(
-            tokens,
+            tokens[:self.max_length],
             token_indexers=self._indexers
         )
         fields: Dict[str, Field] = {

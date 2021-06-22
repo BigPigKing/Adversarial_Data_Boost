@@ -27,6 +27,7 @@ class Augmenter(object):
         self.indexer = dataset_dict["dataset_reader"]._indexers["tokens"]
         self.is_transformer = dataset_dict["dataset_reader"].is_transformer
         self.padded_idx = padded_idx
+        self.max_length = dataset_dict["dataset_reader"].max_length
 
         try:  # if non-transformer
             self.detokenizer.index_with(vocab)
@@ -126,7 +127,7 @@ class Augmenter(object):
         # print("LEN AUGMENTED")
         # print(len(augmented_token_ids["token_ids"]))
 
-        return augmented_token_ids
+        return augmented_token_ids[:self.max_length]
 
     def augment(
         self,
