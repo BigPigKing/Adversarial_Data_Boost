@@ -213,7 +213,8 @@ def set_and_get_text_model(
     elif text_model_params["optimizer"]["select_optimizer"] == "rmsprop":
         text_model_params["optimizer"]["select_optimizer"] = torch.optim.RMSprop
     elif text_model_params["optimizer"]["select_optimizer"] == "adamw":
-        text_model_params["optimizer"]["select_optimizer"] = torch.optim.AdamW
+        from transformers import AdamW
+        text_model_params["optimizer"]["select_optimizer"] = AdamW
     else:
         raise(KeyError)
 

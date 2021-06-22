@@ -3,6 +3,7 @@ import torch
 from .loss import JsdCrossEntropy
 from typing import List, Dict
 from overrides import overrides
+from transformers import get_linear_schedule_with_warmup
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.nn.util import get_text_field_mask
 
@@ -41,7 +42,12 @@ class SentimentModel(torch.nn.Module):
         # Scheduler inititailzation
         if sentiment_model_params["scheduler"]["select_scheduler"] != "none":
             # self.scheduler = sentiment_model_params["scheduler"]["select_scheduler"](self.optimizer)
-            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, "min")
+            # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, "min")
+            self.scheduler = get_linear_schedule_with_warmup(
+                self.optimizer,
+                num_warmup_steps=sentiment_model_params["scheduler"]["warmup_steps"],
+                num_training_steps=sentiment_model_params["scheduler"]["training_steps"]
+            )
         else:
             self.scheduler = None
 
@@ -184,6 +190,7 @@ class SentimentModel(torch.nn.Module):
 
             if is_step is True:
                 optimizer.step()
+                self.scheduler.step()
                 optimizer.zero_grad()
             else:
                 pass

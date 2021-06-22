@@ -69,10 +69,12 @@
         },
         "optimizer": {
             "select_optimizer": "adamw",
-            "lr": 1e-6
+            "lr": 1e-5
         },
         "scheduler": {
-            "select_scheduler": "reduce"
+            "select_scheduler": "reduce",
+            "training_steps": 3204,
+            "warmup_steps": 192
         },
         "criterions": {
             "classification_criterion": "cross_entropy",
@@ -173,17 +175,17 @@
     },
 
     "train_mode": {
-        "select_mode": 3,
+        "select_mode": 0,
         "0": {
             "text_trainer": {
                 "dataloader": {
-                    "train_batch_size": 66,
-                    "valid_batch_size": 66,
-                    "test_batch_size": 66,
+                    "train_batch_size": 32,
+                    "valid_batch_size": 200,
+                    "test_batch_size": 200,
                     "shuffle": true
                 },
-                "accumulated_step": 30,
-                "epochs": 21,
+                "accumulated_step": 1,
+                "epochs": 12,
                 "is_save": true
             },
             "reinforce_trainer": {

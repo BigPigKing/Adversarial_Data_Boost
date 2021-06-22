@@ -271,12 +271,6 @@ class TextTrainer(Trainer):
             with torch.no_grad():
                 test_avg_loss, test_avg_acc = self._fit_valid(test_data_loader)
 
-            # LR schedulr
-            if self.train_model.scheduler is not None:
-                self.train_model.scheduler.step(valid_avg_loss)
-            else:
-                pass
-
             print("Epochs                   : {}".format(epoch))
             print("Training Total Loss      : {:.5f}".format(loss_dict["avg_loss"]))
             print("Training Origin Loss     : {:.5f}".format(loss_dict["avg_origin_loss"]))
