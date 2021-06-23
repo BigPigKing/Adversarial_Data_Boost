@@ -96,7 +96,7 @@ class Augmenter(object):
 
         # Get Augmented String
         augmented_str = self.tokenizer.detokenize(
-            augmented_tokens
+            augmented_tokens[:self.max_length]
         )
 
         # Encode to token_ids
@@ -127,7 +127,7 @@ class Augmenter(object):
         # print("LEN AUGMENTED")
         # print(len(augmented_token_ids["token_ids"]))
 
-        return augmented_token_ids[:self.max_length]
+        return augmented_token_ids
 
     def augment(
         self,

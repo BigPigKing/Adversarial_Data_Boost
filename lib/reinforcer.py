@@ -119,7 +119,7 @@ class Environment(torch.nn.Module):
             reward = self.reinforcer_reward(self.initial_prediction, augmented_prediction).detach().cpu().item()
 
         # Penelty Reward
-        penelty_reward = 0.012 * (self.current_step / self.max_step)
+        penelty_reward = 0.006 * (self.current_step / self.max_step)
 
         # Record Step
         self.current_step += 1
@@ -141,7 +141,7 @@ class Environment(torch.nn.Module):
         # Last action will be "stop"
         if action == len(self.augmenter_list) - 1:
             done = True
-            reward = 0.006
+            reward = 0.012
         else:
             augmented_state = self.augmenter_list[action].augment(self.current_state)
             reward, done = self._get_env_respond(augmented_state)

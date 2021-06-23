@@ -190,7 +190,10 @@ class SentimentModel(torch.nn.Module):
 
             if is_step is True:
                 optimizer.step()
-                self.scheduler.step()
+                if self.scheduler is not None:
+                    self.scheduler.step()
+                else:
+                    pass
                 optimizer.zero_grad()
             else:
                 pass

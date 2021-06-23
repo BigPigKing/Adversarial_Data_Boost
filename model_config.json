@@ -176,7 +176,7 @@
     },
 
     "train_mode": {
-        "select_mode": 3,
+        "select_mode": 0,
         "0": {
             "text_trainer": {
                 "dataloader": {
@@ -321,23 +321,41 @@
                     "model_record/reinforce_model_weights/policy11",
                     "model_record/reinforce_model_weights/policy21",
                     "model_record/reinforce_model_weights/policy31",
+                    "model_record/reinforce_model_weights/policy14",
+                    "model_record/reinforce_model_weights/policy24",
+                    "model_record/reinforce_model_weights/policy34",
                     "model_record/reinforce_model_weights/policy12",
                     "model_record/reinforce_model_weights/policy22",
                     "model_record/reinforce_model_weights/policy32",
+                    "model_record/reinforce_model_weights/policy15",
+                    "model_record/reinforce_model_weights/policy25",
+                    "model_record/reinforce_model_weights/policy35",
                     "model_record/reinforce_model_weights/policy13",
                     "model_record/reinforce_model_weights/policy23",
-                    "model_record/reinforce_model_weights/policy33"
+                    "model_record/reinforce_model_weights/policy33",
+                    "model_record/reinforce_model_weights/policy16",
+                    "model_record/reinforce_model_weights/policy26",
+                    "model_record/reinforce_model_weights/policy36"
                 ],
                 "save_name": [
                     "model_record/augments/augment11",
                     "model_record/augments/augment21",
                     "model_record/augments/augment31",
+                    "model_record/augments/augment14",
+                    "model_record/augments/augment24",
+                    "model_record/augments/augment34",
                     "model_record/augments/augment12",
                     "model_record/augments/augment22",
                     "model_record/augments/augment32",
+                    "model_record/augments/augment15",
+                    "model_record/augments/augment25",
+                    "model_record/augments/augment35",
                     "model_record/augments/augment13",
                     "model_record/augments/augment23",
-                    "model_record/augments/augment33"
+                    "model_record/augments/augment33",
+                    "model_record/augments/augment16",
+                    "model_record/augments/augment26",
+                    "model_record/augments/augment36"
                 ]
             },
             "text_finetuner": {
