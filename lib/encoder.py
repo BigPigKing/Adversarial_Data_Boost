@@ -24,10 +24,16 @@ class TransformerEncoder(
     ):
         super(TransformerEncoder, self).__init__()
 
-        self.pooler = BertPooler(
-            pretrained_model=transformer_encoder_params["model_name"],
-            dropout=transformer_encoder_params["dropout"]
-        )
+        if transformer_encoder_params["model_name"] == "albert-base-v2":
+            self.pooler = BertPooler(
+                pretrained_model="bert-base-uncased",
+                dropout=transformer_encoder_params["dropout"]
+            )
+        else:
+            self.pooler = BertPooler(
+                pretrained_model=transformer_encoder_params["model_name"],
+                dropout=transformer_encoder_params["dropout"]
+            )
 
     @overrides
     def forward(

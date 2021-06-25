@@ -91,7 +91,7 @@
 
     "reinforcer": {
         "environment": {
-            "similarity_threshold": 0.8
+            "similarity_threshold": 0.9
         },
 
         "augmenter": {
