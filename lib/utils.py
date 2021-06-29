@@ -108,7 +108,7 @@ def get_sentence_from_text_field_tensors(
 ):
     # Warning: Trash Code.
     tokenizer = PretrainedTransformerTokenizer(
-        "bert-base-uncased"
+        "roberta-base"
     )
     if is_transformer is True:
         sentences_token_ids = text_field_tensors["tokens"]["token_ids"].int().tolist()
