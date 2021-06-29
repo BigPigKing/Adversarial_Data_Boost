@@ -80,6 +80,7 @@ class ReinforceTrainer(Trainer):
             "loss": 0.0,
             "reward": 0.0,
             "actions": [],
+            "total_actions": [],
             "origin_sentences": [],
             "augment_sentences": []
         }
@@ -99,6 +100,7 @@ class ReinforceTrainer(Trainer):
             batch_output_dict["origin_sentences"].append(output_dict["origin_sentence"])
             batch_output_dict["augment_sentences"].append(output_dict["augment_sentence"])
             batch_output_dict["actions"].append(output_dict["actions"])
+            batch_output_dict["total_actions"] += output_dict["actions"]
 
             # batch updating
             if (episode_idx+1) % batch_size == 0:
@@ -108,7 +110,7 @@ class ReinforceTrainer(Trainer):
                 print(output_dict["augment_sentence"])
                 print(output_dict["actions"])
                 print(output_dict["ep_reward"])
-                print(dict(Counter(output_dict["actions"])))
+                print(dict(Counter(output_dict["total_actions"])))
 
                 if self.writer is None:
                     pass
@@ -126,6 +128,7 @@ class ReinforceTrainer(Trainer):
                     "loss": 0.0,
                     "reward": 0.0,
                     "actions": [],
+                    "total_actions": [],
                     "origin_sentences": [],
                     "augment_sentences": []
                 }
