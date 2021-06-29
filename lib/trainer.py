@@ -40,15 +40,36 @@ class ReinforceTrainer(Trainer):
     def _record(
         self,
         step: int,
-        batch_output_dict: Dict
+        batch_output_dict: Dict,
+        batch_size: int
     ):
-        self.writer.add_scalar("Loss", batch_output_dict["loss"], step)
-        self.writer.add_scalar("Reward", batch_output_dict["reward"], step)
-        self.writer.add_text("Origin", batch_output_dict["origin_sentences"][0], step)
-        self.writer.add_text("Augment", batch_output_dict["augment_sentences"][0], step)
-        action_str = [str(x) for x in batch_output_dict["actions"]]
+        self.writer.add_scalar(
+            "Loss",
+            batch_output_dict["loss"] / batch_size,
+            step
+        )
+        self.writer.add_scalar(
+            "Reward",
+            batch_output_dict["reward"] / batch_size,
+            step
+        )
+        self.writer.add_text(
+            "Origin",
+            batch_output_dict["origin_sentences"][-1],
+            step
+        )
+        self.writer.add_text(
+            "Augment",
+            batch_output_dict["augment_sentences"][-1],
+            step
+        )
+        action_str = [str(x) for x in batch_output_dict["actions"][-1]]
         action_str = ' '.join(action_str)
-        self.writer.add_text("Action", action_str, step)
+        self.writer.add_text(
+            "Action",
+            action_str,
+            step
+        )
 
     def _fit_epoch(
         self,
@@ -75,9 +96,9 @@ class ReinforceTrainer(Trainer):
             # update batch dict
             batch_output_dict["loss"] += output_dict["loss"]
             batch_output_dict["reward"] += output_dict["ep_reward"]
-            batch_output_dict["origin_sentences"] += output_dict["origin_sentence"]
-            batch_output_dict["augment_sentences"] += output_dict["augment_sentence"]
-            batch_output_dict["actions"] += output_dict["actions"]
+            batch_output_dict["origin_sentences"].append(output_dict["origin_sentence"])
+            batch_output_dict["augment_sentences"].append(output_dict["augment_sentence"])
+            batch_output_dict["actions"].append(output_dict["actions"])
 
             # batch updating
             if (episode_idx+1) % batch_size == 0:
@@ -92,7 +113,7 @@ class ReinforceTrainer(Trainer):
                 if self.writer is None:
                     pass
                 else:
-                    self._record(self.record_step, batch_output_dict)
+                    self._record(self.record_step, batch_output_dict, batch_size)
 
                 self.record_step += 1
 

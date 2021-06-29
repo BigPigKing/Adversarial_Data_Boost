@@ -176,7 +176,7 @@
     },
 
     "train_mode": {
-        "select_mode": 0,
+        "select_mode": 4,
         "0": {
             "text_trainer": {
                 "dataloader": {
@@ -412,6 +412,31 @@
         },
 
         "4": {
+            "text_trainer": {
+                "dataloader": {
+                    "train_batch_size": 4,
+                    "valid_batch_size": 200,
+                    "test_batch_size": 200,
+                    "shuffle": true
+                },
+                "accumulated_step": 8,
+                "epochs": 12,
+                "is_save": true,
+                "augmented_instance": [
+                    "model_record/augments/augment11",
+                    "model_record/augments/augment21",
+                    "model_record/augments/augment31",
+                    "model_record/augments/augment12",
+                    "model_record/augments/augment22",
+                    "model_record/augments/augment32",
+                    "model_record/augments/augment13",
+                    "model_record/augments/augment23",
+                    "model_record/augments/augment33"
+                ]
+            }
+        },
+
+        "5": {
             "pretrained_text_model": {
                 "embedder": "model_record/text_model_weights/embedder.pkl",
                 "encoder": "model_record/text_model_weights/encoder.pkl",

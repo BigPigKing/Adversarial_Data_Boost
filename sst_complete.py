@@ -149,6 +149,44 @@ def load_pretrained_text_model(
     )
 
 
+def train_with_augmented_data_from_scratch(
+    mode_params: Dict,
+    dataset_dict: Dict,
+    text_model: torch.nn.Module
+):
+    set_augments_to_dataset_instances(
+        dataset_dict,
+        mode_params["text_trainer"]["augmented_instance"]
+    )
+
+    # Get Text Trainer
+    text_trainer = set_and_get_text_trainer(
+        mode_params["text_trainer"],
+        text_model
+    )
+
+    # Get Text DataLoader
+    train_dataloader, valid_dataloader, test_dataloader = set_and_get_text_dataloader(
+        mode_params["text_trainer"]["dataloader"],
+        train_ds=dataset_dict["train_ds"],
+        valid_ds=dataset_dict["valid_ds"],
+        test_ds=dataset_dict["test_ds"]
+    )
+
+    # Train Text Model
+    text_model.train()
+    text_model.set_augment_field_names(
+        mode_params["text_trainer"]["augmented_instance"]
+    )
+    text_trainer.fit(
+        mode_params["text_trainer"]["epochs"],
+        True,
+        train_dataloader,
+        valid_dataloader,
+        test_dataloader
+    )
+
+
 def all_procedure(
     mode_params: Dict,
     dataset_dict: Dict,
@@ -339,6 +377,13 @@ def main(config_params):
             reinforcer
         )
     elif config_params["train_mode"]["select_mode"] == 4:
+        text_model.is_finetune = False
+        train_with_augmented_data_from_scratch(
+            config_params["train_mode"]["4"],
+            dataset_dict,
+            text_model
+        )
+    elif config_params["train_mode"]["select_mode"] == 5:
         visualizer = set_and_get_visualizer(
             config_params["visualizer"],
             text_model,

@@ -51,7 +51,7 @@ def set_and_get_dataset(
         }
     elif dataset_params["select_dataset"] == "yelp":
         train_ds, valid_ds, test_ds, dataset_reader = get_yelp_ds(
-            train_data_proportion=dataset_params["yelp"]["proportion"]
+            dataset_params["yelp"]
         )
 
         return {
