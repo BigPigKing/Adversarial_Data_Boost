@@ -138,7 +138,8 @@ def get_sentence_from_text_field_tensors(
 def augment_and_get_texts_from_dataset(
     dataset_reader: DatasetReader,
     dataset: AllennlpDataset,
-    reinforcer
+    reinforcer,
+    select_mode: str
 ):
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=allennlp_collate)
 
@@ -148,7 +149,10 @@ def augment_and_get_texts_from_dataset(
         episode = move_to_device(episode, 0)
 
         # Get augment string from reinforcer
-        augment_text = reinforcer.augment(episode["tokens"])
+        if select_mode == "default":
+            augment_text = reinforcer.augment(episode["tokens"])
+        elif select_mode == "eda":
+            augment_text = reinforcer.EDA_augment(episode["tokens"])
 
         augment_texts.append(augment_text)
 
@@ -160,7 +164,8 @@ def generate_and_save_augmentation_texts(
     saved_names: List[str],
     dataset_reader: DatasetReader,
     train_dataset: AllennlpDataset,
-    reinforcer
+    reinforcer,
+    select_mode: str,
 ):
     for policy_weight_path, saved_name in zip(policy_weight_paths, saved_names):
         import time
@@ -174,7 +179,8 @@ def generate_and_save_augmentation_texts(
         augmentation_texts = augment_and_get_texts_from_dataset(
             dataset_reader,
             train_dataset,
-            reinforcer
+            reinforcer,
+            select_mode
         )
 
         # Save obj

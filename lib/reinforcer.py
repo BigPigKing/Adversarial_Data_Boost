@@ -1,4 +1,5 @@
 import torch
+import random
 import numpy as np
 
 from overrides import overrides
@@ -328,6 +329,20 @@ class REINFORCER(torch.nn.Module):
 
         self.policy.optimizer.step()
         self.policy.optimizer.zero_grad()
+
+    def EDA_augment(
+        self,
+        wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]]
+    ):
+        action = random.choice(range(len(self.env.augmenter_list) - 1))
+        augmented_state = self.env.augmenter_list[action].augment(wrapped_token_of_sent)
+
+        return get_sentence_from_text_field_tensors(
+            self.vocab,
+            augmented_state,
+            self.is_transformer,
+            is_tokenized=True
+        )
 
     def augment(
         self,

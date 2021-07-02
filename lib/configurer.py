@@ -462,7 +462,8 @@ def set_and_save_augmented_texts(
                 augmented_instances_params["save_name"],
                 dataset_reader,
                 train_ds,
-                reinforcer
+                reinforcer,
+                augmented_instances_params["select_mode"]
             )
         elif augmented_instances_params["num_processor"] > 1:
             try:
@@ -500,7 +501,8 @@ def set_and_save_augmented_texts(
                         save_name_args,
                         repeat(dataset_reader),
                         repeat(train_ds),
-                        repeat(reinforcer)
+                        repeat(reinforcer),
+                        repeat(augmented_instances_params["select_mode"])
                     )
                 )
         else:

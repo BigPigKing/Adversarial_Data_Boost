@@ -110,7 +110,7 @@ class ReinforceTrainer(Trainer):
                 print(output_dict["augment_sentence"])
                 print(output_dict["actions"])
                 print(output_dict["ep_reward"])
-                print(dict(Counter(output_dict["total_actions"])))
+                print(dict(Counter(batch_output_dict["total_actions"])))
 
                 if self.writer is None:
                     pass
