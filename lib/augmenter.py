@@ -11,7 +11,7 @@ from overrides import overrides
 from nltk.corpus import wordnet
 from allennlp.data import Vocabulary
 from allennlp.nn.util import move_to_device
-from allennlp.modules.token_embedders import Embedding
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 
 class Augmenter(object):
@@ -103,29 +103,6 @@ class Augmenter(object):
         augmented_token_ids = self._get_encode_token_ids(
             augmented_str
         )
-
-        # print("OriginTokenIds")
-        # print(token_ids)
-        # print()
-        # print("DecodeStr")
-        # print(decode_str)
-        # print()
-        # print("DecodeTokens")
-        # print(decode_tokens)
-        # print()
-        # print("AugmentTokens")
-        # print(augmented_tokens)
-        # print()
-        # print("AugmentStr")
-        # print(augmented_str)
-        # print()
-        # print("AugmentTokenIds")
-        # print(augmented_token_ids)
-        # print()
-        # print("LEN TOKEN ID")
-        # print(len(token_ids))
-        # print("LEN AUGMENTED")
-        # print(len(augmented_token_ids["token_ids"]))
 
         return augmented_token_ids
 
@@ -369,46 +346,85 @@ class InsertAugmenter(ReplaceAugmenter):
         return tokens
 
 
-class OldInsertAugmenter(ReplaceAugmenter):
+class MtTransformers(object):
     def __init__(
         self,
-        vocab: Vocabulary,
-        embedding_layer: Embedding,
-        synonym_dict: Dict,
-        insert_augmenter_params: Dict
+        src_model_name='Helsinki-NLP/opus-mt-en-jap',
+        tgt_model_name='Helsinki-NLP/opus-mt-jap-en',
+            device='cuda',
+            silence=True
     ):
-        super(OldInsertAugmenter, self).__init__(
-            vocab,
-            embedding_layer,
-            synonym_dict,
-            insert_augmenter_params
-        )
+        self.device = 0
+        self.src_model_name = src_model_name
+        self.tgt_model_name = tgt_model_name
+        self.src_model = AutoModelForSeq2SeqLM.from_pretrained(self.src_model_name)
+        self.src_model.to(device)
+        self.tgt_model = AutoModelForSeq2SeqLM.from_pretrained(self.tgt_model_name)
+        self.tgt_model.to(device)
+        self.src_tokenizer = AutoTokenizer.from_pretrained(self.src_model_name)
+        self.tgt_tokenizer = AutoTokenizer.from_pretrained(self.tgt_model_name)
 
-    @overrides
+    def get_device(self):
+        return str(self.src_model.device)
+
+    def predict(self, texts, target_words=None, n=1):
+        src_tokenized_texts = self.src_tokenizer(texts, padding=True, return_tensors='pt').to(self.device)
+        src_translated_ids = self.src_model.generate(**src_tokenized_texts)
+        src_translated_texts = self.src_tokenizer.batch_decode(src_translated_ids, skip_special_tokens=True)
+
+        tgt_tokenized_texts = self.tgt_tokenizer(src_translated_texts, padding=True, return_tensors='pt').to(self.device)
+        tgt_translated_ids = self.tgt_model.generate(**tgt_tokenized_texts)
+        tgt_translated_texts = self.tgt_tokenizer.batch_decode(tgt_translated_ids, skip_special_tokens=True)
+
+        return tgt_translated_texts
+
+
+class BackTransAugmenter(Augmenter):
+    def __init__(
+        self,
+        backtrans_params: Dict,
+        vocab: Vocabulary,
+        dataset_dict: Dict
+    ):
+        super(BackTransAugmenter, self).__init__(
+            vocab,
+            dataset_dict
+        )
+        self.model = MtTransformers(
+            src_model_name=backtrans_params["from_model_name"],
+            tgt_model_name=backtrans_params["to_model_name"],
+            device=backtrans_params["device"]
+        )
+        self.magnitude = backtrans_params["magnitude"]
+
+    def _action(
+        self,
+        text: str
+    ) -> str:
+        augmented_text = self.model.predict(text)
+
+        return augmented_text[-1]
+
     def _augment(
         self,
-        text_tensor: torch.tensor
-    ):
-        augment_text_list = text_tensor.tolist()
-        replace_idx = random.sample(range(len(augment_text_list)), 1)[0]
+        token_ids: torch.Tensor
+    ) -> torch.Tensor:
+        # Decode to original string
+        decode_str = self._get_decode_str(
+            token_ids
+        )
 
-        replace_synonym = self._get_replace_synonym(augment_text_list[replace_idx])
+        # Action
+        augmented_str = self._action(
+            copy.deepcopy(decode_str)
+        )
 
-        if replace_synonym:
-            for idx, synonym_token in enumerate(replace_synonym):
-                synonym_idx = self.vocab.get_token_index(synonym_token)
+        # Encode to token_ids
+        augmented_token_ids = self._get_encode_token_ids(
+            augmented_str
+        )
 
-                if synonym_idx == self.oov_idx:
-                    synonym_idx = self.vocab.add_token_to_namespace(synonym_token)
-                    self.embedding_layer.token_embedders["tokens"].extend_vocab(self.vocab)
-                else:
-                    pass
-
-                augment_text_list.insert(replace_idx + idx, synonym_idx)
-        else:
-            pass
-
-        return torch.tensor(augment_text_list).to(text_tensor.get_device())
+        return augmented_token_ids
 
 
 class IdentityAugmenter(Augmenter):

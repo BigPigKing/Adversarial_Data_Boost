@@ -2,7 +2,7 @@ import torch
 
 from typing import Dict
 from overrides import overrides
-from allennlp.modules import FeedForward
+from allennlp.modules import FeedForward  # noqa
 
 
 class TextClassifier(torch.nn.Module):
@@ -14,21 +14,22 @@ class TextClassifier(torch.nn.Module):
     ):
         super(TextClassifier, self).__init__()
 
-        feedforward = FeedForward(
-            input_dim=input_size,
-            num_layers=feedforward_params["num_layers"],
-            hidden_dims=feedforward_params["hidden_dims"],
-            activations=feedforward_params["activations"],
-            dropout=feedforward_params["dropout"]
-        )
+        # feedforward = FeedForward(
+        #     input_dim=input_size,
+        #     num_layers=feedforward_params["num_layers"],
+        #     hidden_dims=feedforward_params["hidden_dims"],
+        #     activations=feedforward_params["activations"],
+        #     dropout=feedforward_params["dropout"]
+        # )
 
         final_linear = torch.nn.Linear(
-            feedforward.get_output_dim(),
+            # feedforward.get_output_dim(),
+            input_size,
             output_size
         )
 
         self.classifiers = torch.nn.ModuleList(
-            [feedforward, final_linear]
+            [final_linear]
         )
 
     @overrides

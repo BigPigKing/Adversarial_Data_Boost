@@ -5,13 +5,13 @@ import torch.multiprocessing as mp
 from typing import Dict, List
 from itertools import repeat
 
-from lib.dataset import get_sst_ds, get_yelp_ds
+from lib.dataset import get_sst_ds, get_yelp_ds, get_sentimenmt_ds
 from lib.embedder import TextEmbedder
 from lib.encoder import WordEncoder, TransformerEncoder
 from lib.classifier import TextClassifier
 from lib.model import SentimentModel
 from lib.trainer import TextTrainer, ReinforceTrainer
-from lib.augmenter import DeleteAugmenter, SwapAugmenter
+from lib.augmenter import DeleteAugmenter, SwapAugmenter, BackTransAugmenter
 from lib.augmenter import IdentityAugmenter, InsertAugmenter, ReplaceAugmenter
 from lib.reinforcer import REINFORCER
 from lib.utils import load_obj, generate_and_save_augmentation_texts
@@ -52,6 +52,17 @@ def set_and_get_dataset(
     elif dataset_params["select_dataset"] == "yelp":
         train_ds, valid_ds, test_ds, dataset_reader = get_yelp_ds(
             dataset_params["yelp"]
+        )
+
+        return {
+            "train_ds": train_ds,
+            "valid_ds": valid_ds,
+            "test_ds": test_ds,
+            "dataset_reader": dataset_reader
+        }
+    elif dataset_params["select_dataset"] == "sentiment":
+        train_ds, valid_ds, test_ds, dataset_reader = get_sentimenmt_ds(
+            dataset_params["sentiment"]
         )
 
         return {
@@ -236,17 +247,6 @@ def set_and_get_reinforcer(
     vocab: Vocabulary,
     text_model: torch.nn.Module,
 ):
-    # Get synonyms
-    # if reinforcer_params["augmenter"]["synonyms"]["synonyms_filepath"]:
-    #     synonyms = load_obj(
-    #         reinforcer_params["augmenter"]["synonyms"]["synonyms_filepath"]
-    #     )
-    # else:
-    #     synonyms = get_synonyms_from_dataset(dataset_dict["train_ds"])
-
-    # print(vocab)
-    # exit()
-
     # Get augmenter
     # Delete
     delete_augmenter = DeleteAugmenter(
@@ -276,6 +276,13 @@ def set_and_get_reinforcer(
         dataset_dict
     )
 
+    # BackTrans
+    backtrans_augmenter = BackTransAugmenter(
+        reinforcer_params["augmenter"]["backtrans_augmenter"],
+        vocab,
+        dataset_dict
+    )
+
     # Identity
     identity_augmenter = IdentityAugmenter(dataset_dict["dataset_reader"].is_transformer)
 
@@ -284,6 +291,7 @@ def set_and_get_reinforcer(
         swap_augmenter,
         replace_augmenter,
         insert_augmenter,
+        backtrans_augmenter
     ]
 
     # Get selected augmenters
@@ -364,64 +372,6 @@ def set_and_get_reinforce_dataloader(
     )
 
     return reinforce_dataloader
-
-
-def set_and_get_synonyms(
-    synonyms_params: Dict,
-    train_ds: AllennlpDataset
-):
-    pass
-
-
-def set_and_get_augmenters(
-    augmenter_params: Dict,
-    vocab: Vocabulary,
-    embedder: Embedding,
-    synonyms: Dict
-):
-    # Delete
-    delete_augmenter = DeleteAugmenter(
-        augmenter_params["delete_augmenter"]
-    )
-
-    # Swap
-    swap_augmenter = SwapAugmenter(
-        augmenter_params["swap_augmenter"]
-    )
-
-    # Replace
-    replace_augmenter = ReplaceAugmenter(
-        vocab,
-        embedder,
-        synonyms,
-        augmenter_params["replace_augmenter"]
-    )
-
-    # Insert
-    insert_augmenter = InsertAugmenter(
-        vocab,
-        embedder,
-        synonyms,
-        augmenter_params["insert_augmenter"]
-    )
-
-    # Identity
-    identity_augmenter = IdentityAugmenter()
-
-    augmenters = [
-        delete_augmenter,
-        swap_augmenter,
-        replace_augmenter,
-        insert_augmenter,
-        identity_augmenter
-    ]
-
-    returned_augmenters = []
-
-    for idx in augmenter_params["select_idx"]:
-        returned_augmenters.append(augmenters[idx])
-
-    return returned_augmenters
 
 
 def set_and_get_text_trainer(

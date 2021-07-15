@@ -153,6 +153,8 @@ def augment_and_get_texts_from_dataset(
             augment_text = reinforcer.augment(episode["tokens"])
         elif select_mode == "eda":
             augment_text = reinforcer.EDA_augment(episode["tokens"])
+        elif select_mode == "backtrans":
+            augment_text = reinforcer.BackTrans_augment(episode["tokens"])
 
         augment_texts.append(augment_text)
 

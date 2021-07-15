@@ -1,7 +1,8 @@
 import csv
 import logging
-import numpy as np
+import pandas as pd
 
+from sklearn.model_selection import train_test_split
 from .tokenizer import WordTokenizer
 
 from typing import Dict, Optional, Union
@@ -69,6 +70,102 @@ class YelpReviewDatasetReader(DatasetReader):
                     yield instance
                 else:
                     pass
+
+    def make_token(
+        self,
+        t: Union[str, Token]
+    ):
+        if isinstance(t, str):
+            return Token(t)
+        elif isinstance(t, Token):
+            return t
+        else:
+            raise ValueError("Tokens must be either str or Token.")
+
+    @overrides
+    def text_to_instance(
+        self,
+        text: str,
+        sentiment: str = None
+    ) -> Optional[Instance]:
+        tokens = self._tokenizer.tokenize(text)
+
+        if self.is_transformer is False:
+            tokens = [self.make_token(x) for x in tokens]
+        else:
+            pass
+
+        text_field = TextField(
+            tokens,
+            token_indexers=self._indexers
+        )
+        fields: Dict[str, Field] = {
+            self.field_names["text"][0]: text_field
+        }
+
+        if sentiment is not None:
+            fields[self.field_names["label"][0]] = LabelField(sentiment)
+        else:
+            pass
+
+        return Instance(fields)
+
+    def get_token_indexers(self):
+        return self._token_indexers
+
+
+@DatasetReader.register("CR")
+class SentimentDatasetReader(DatasetReader):
+    def __init__(
+        self,
+        dataset_params: Dict,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+
+        if dataset_params["transformer_model_name"] is None:
+            self._indexers = {
+                "tokens": SingleIdTokenIndexer()
+            }
+            self._tokenizer = WordTokenizer()
+            self._vocab = None
+            self.is_transformer = False
+        else:
+            self._indexers = {
+                "tokens": PretrainedTransformerIndexer(
+                    dataset_params["transformer_model_name"]
+                )
+            }
+            self._tokenizer = PretrainedTransformerTokenizer(
+                dataset_params["transformer_model_name"]
+            )
+            self._vocab = Vocabulary.from_pretrained_transformer(
+                dataset_params["transformer_model_name"]
+            )
+            self.is_transformer = True
+        self.detokenizer = WordTokenizer()
+        self.max_length = dataset_params["max_length"]
+
+        self.field_names = {
+            "text": [dataset_params["review_field_name"]],
+            "label": [dataset_params["label_field_name"]],
+            "augments": []
+        }  # Warning: Augments now only suitable for one original field
+
+    @overrides
+    def _read(self, file_path):
+        corpus = pd.read_pickle(
+            file_path
+        )
+        reviews, labels = list(corpus.sentence), list(corpus.label)
+
+        for review, label in zip(reviews, labels):
+            instance = self.text_to_instance(review, label)
+
+            if instance is not None:
+                yield instance
+            else:
+                pass
 
     def make_token(
         self,
@@ -280,10 +377,17 @@ def get_sst_ds(
         sst_params
     )
 
+    train_ds = sst_dataset_reader.read(train_data_path)
+
     if sst_params["proportion"] != 1:
-        train_ds = sst_dataset_reader.read(train_data_path + str(sst_params["proportion"]))
+        import random
+        random.seed(2003)
+        train_ds.instances = random.sample(
+            train_ds.instances,
+            int(len(train_ds.instances) * sst_params["proportion"])
+        )
     else:
-        train_ds = sst_dataset_reader.read(train_data_path)
+        pass
     valid_ds = sst_dataset_reader.read(valid_data_path)
     test_ds = sst_dataset_reader.read(test_data_path)
 
@@ -302,6 +406,47 @@ def get_yelp_ds(
     test_ds = yelp_dataset_reader.read(test_data_path)
 
     return train_ds, valid_ds, test_ds, yelp_dataset_reader
+
+
+def split_dataset(
+    all_data_path: str
+):
+    corpus = pd.read_pickle(all_data_path)
+    train, test = train_test_split(
+        corpus,
+        test_size=0.25,
+        random_state=2003
+    )
+    train, valid = train_test_split(
+        train,
+        test_size=0.1,
+        random_state=2003
+    )
+
+    train.to_pickle(all_data_path + "train")
+    valid.to_pickle(all_data_path + "valid")
+    test.to_pickle(all_data_path + "test")
+
+
+def get_sentimenmt_ds(
+    dataset_params: Dict
+):
+    split_dataset(
+        dataset_params["datapath"]
+    )
+    sentiment_dataset_reader = SentimentDatasetReader(dataset_params)
+
+    train_ds = sentiment_dataset_reader.read(
+        dataset_params["datapath"] + "train"
+    )
+    valid_ds = sentiment_dataset_reader.read(
+        dataset_params["datapath"] + "valid"
+    )
+    test_ds = sentiment_dataset_reader.read(
+        dataset_params["datapath"] + "test"
+    )
+
+    return train_ds, valid_ds, test_ds, sentiment_dataset_reader
 
 
 def split_proportion_csv(
@@ -323,16 +468,7 @@ def split_proportion_csv(
 
 
 def main():
-    sst_path = "../data/sst/train.txt"
-    sst_dir_path = "../data/sst/"
-
-    for proportion in np.arange(0.1, 1, 0.1):
-        split_proportion_csv(
-            sst_path,
-            sst_dir_path,
-            proportion,
-            delimiter='\n'
-        )
+    pass
 
 
 if __name__ == '__main__':

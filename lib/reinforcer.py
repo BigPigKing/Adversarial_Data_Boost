@@ -344,6 +344,19 @@ class REINFORCER(torch.nn.Module):
             is_tokenized=True
         )
 
+    def BackTrans_augment(
+        self,
+        wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]]
+    ):
+        augmented_state = self.env.augmenter_list[0].augment(wrapped_token_of_sent)
+
+        return get_sentence_from_text_field_tensors(
+            self.vocab,
+            augmented_state,
+            self.is_transformer,
+            is_tokenized=True
+        )
+
     def augment(
         self,
         wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]]
