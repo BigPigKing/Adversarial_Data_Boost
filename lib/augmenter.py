@@ -9,7 +9,6 @@ from .tokenizer import WordTokenizer
 from typing import Dict, List
 from overrides import overrides
 from nltk.corpus import wordnet
-from allennlp.data import Vocabulary
 from allennlp.nn.util import move_to_device
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
@@ -17,35 +16,23 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 class Augmenter(object):
     def __init__(
         self,
-        vocab: Vocabulary,
         dataset_dict: Dict,
-        tokenizer=None,
-        padded_idx: int = 0
+        tokenizer=None
     ):
-        self.detokenizer = dataset_dict["dataset_reader"]._tokenizer
-        self.vocab = dataset_dict["dataset_reader"]._vocab
+        self.detokenizer = dataset_dict["dataset_reader"].transformer_tokenizer
+        self.transformer_vocab = dataset_dict["dataset_reader"].transformer_vocab
         self.indexer = dataset_dict["dataset_reader"]._indexers["tokens"]
-        self.is_transformer = dataset_dict["dataset_reader"].is_transformer
-        self.padded_idx = padded_idx
         self.max_length = dataset_dict["dataset_reader"].max_length
-
-        try:  # if non-transformer
-            self.detokenizer.index_with(vocab)
-        except AttributeError:
-            pass
         self.tokenizer = tokenizer or WordTokenizer()
 
     def _get_decode_str(
         self,
         token_ids: torch.Tensor
     ):
-        try:  # This is for the non-transformer tokenizer, because transformer tokenizer in allennlp doesn't have decode
-            decode_str = self.detokenizer.decode(token_ids.tolist())
-        except AttributeError:
-            decode_str = self.detokenizer.tokenizer.decode(
-                token_ids.tolist(),
-                skip_special_tokens=True
-            )
+        decode_str = self.detokenizer.tokenizer.decode(
+            token_ids.tolist(),
+            skip_special_tokens=True
+        )
 
         return decode_str
 
@@ -53,18 +40,13 @@ class Augmenter(object):
         self,
         input_str: str
     ):
-        try:  # Allennlp pretrained transformer tokenizer doesn't have encode attribute but others have
-            token_ids = self.detokenizer.encode(
-                input_str
-            )
-        except AttributeError:  # Allennlp indexer output is different [Warn]
-            tokens = self.detokenizer.tokenize(
-                input_str
-            )
-            token_ids = self.indexer.tokens_to_indices(
-                tokens,
-                self.vocab
-            )
+        tokens = self.detokenizer.tokenize(
+            input_str
+        )
+        token_ids = self.indexer.tokens_to_indices(
+            tokens,
+            self.transformer_vocab
+        )
 
         return token_ids
 
@@ -111,7 +93,7 @@ class Augmenter(object):
         text_field_tensors: Dict[str, Dict[str, torch.Tensor]]
     ):
         augment_text_tensor_list = []
-        text_tensor_list = unpad_text_field_tensors(text_field_tensors, self.is_transformer)
+        text_tensor_list = unpad_text_field_tensors(text_field_tensors)
 
         for text_tensor in text_tensor_list:
             augment_text_tensor = self._augment(text_tensor)
@@ -120,7 +102,6 @@ class Augmenter(object):
         return move_to_device(
             pad_text_tensor_list(
                 augment_text_tensor_list,
-                self.is_transformer,
                 indexer=self.indexer
             ),
             text_tensor_list[0].get_device()
@@ -131,11 +112,9 @@ class DeleteAugmenter(Augmenter):
     def __init__(
         self,
         delete_augmenter_params: Dict,
-        vocab: Vocabulary,
         dataset_dict: Dict
     ):
         super(DeleteAugmenter, self).__init__(
-            vocab,
             dataset_dict
         )
         self.magnitude = delete_augmenter_params["magnitude"]
@@ -145,7 +124,6 @@ class DeleteAugmenter(Augmenter):
         self,
         tokens: List[str]
     ) -> List[str]:
-        # print("!!!!DELETE")
         if len(tokens) == 1:
             return tokens
         else:
@@ -171,11 +149,9 @@ class SwapAugmenter(Augmenter):
     def __init__(
         self,
         swap_augmenter_params: Dict,
-        vocab: Vocabulary,
         dataset_dict: Dict
     ):
         super(SwapAugmenter, self).__init__(
-            vocab,
             dataset_dict
         )
         self.magnitude = swap_augmenter_params["magnitude"]
@@ -204,11 +180,9 @@ class ReplaceAugmenter(Augmenter):
     def __init__(
         self,
         replace_augmenter_params: Dict,
-        vocab: Vocabulary,
         dataset_dict: Dict
     ):
         super(ReplaceAugmenter, self).__init__(
-            vocab,
             dataset_dict
         )
         self.magnitude = replace_augmenter_params["magnitude"]
@@ -299,12 +273,10 @@ class InsertAugmenter(ReplaceAugmenter):
     def __init__(
         self,
         insert_augmenter_params: Dict,
-        vocab: Vocabulary,
         dataset_dict: Dict
     ):
         super(InsertAugmenter, self).__init__(
             insert_augmenter_params,
-            vocab,
             dataset_dict
         )
 
@@ -383,11 +355,9 @@ class BackTransAugmenter(Augmenter):
     def __init__(
         self,
         backtrans_params: Dict,
-        vocab: Vocabulary,
         dataset_dict: Dict
     ):
         super(BackTransAugmenter, self).__init__(
-            vocab,
             dataset_dict
         )
         self.model = MtTransformers(
@@ -429,12 +399,9 @@ class BackTransAugmenter(Augmenter):
 
 class IdentityAugmenter(Augmenter):
     def __init__(
-        self,
-        is_transformer: bool,
-        padded_idx: int = 0
+        self
     ):
         return
-        # super(IdentityAugmenter, self).__init__(is_transformer, padded_idx=padded_idx)
 
     @overrides
     def _augment(

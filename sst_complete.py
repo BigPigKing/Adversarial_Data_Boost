@@ -3,11 +3,12 @@ import torch
 
 from typing import Dict
 from lib.configurer import get_config_params
-from lib.configurer import set_and_get_dataset, set_and_get_vocab
+from lib.configurer import set_and_get_dataset, set_dataset_vocab
 from lib.configurer import set_and_get_text_model, set_and_get_reinforcer, set_and_get_visualizer
 from lib.configurer import set_and_get_text_trainer, set_and_get_reinforce_trainer
 from lib.configurer import set_and_get_text_dataloader, set_and_get_reinforce_dataloader
 from lib.configurer import set_and_save_augmented_texts, set_augments_to_dataset_instances
+from lib.configurer import set_and_save_syntatic_data
 
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -313,29 +314,66 @@ def visualize_procedure(
     )
 
 
+def syntatic_procedure(
+    mode_params: Dict,
+    dataset_dict: Dict,
+    reinforcer
+):
+    set_and_save_syntatic_data(
+        mode_params["syntatic"],
+        dataset_dict,
+        reinforcer
+    )
+
+
+def test_procedure(
+    mode_params: Dict,
+    dataset_dict: Dict,
+    text_model
+):
+    load_pretrained_text_model(
+        mode_params,
+        text_model
+    )
+
+    train_dataloader, valid_dataloader, test_dataloader = set_and_get_text_dataloader(
+        mode_params["text_finetuner"]["dataloader"],
+        train_ds=dataset_dict["train_ds"],
+        valid_ds=dataset_dict["valid_ds"],
+        test_ds=dataset_dict["test_ds"]
+    )
+
+    text_trainer = set_and_get_text_trainer(
+        mode_params["text_finetuner"],
+        text_model
+    )
+
+    text_trainer.predict(
+        test_dataloader
+    )
+
+
 def main(config_params):
     # Get Dataset
     dataset_dict = set_and_get_dataset(
         config_params["dataset"]
     )
 
-    # Get Vocab
-    vocab = set_and_get_vocab(
+    # Set Dataset Vocab
+    set_dataset_vocab(
         dataset_dict
     )
 
     # Get Text Model
     text_model = set_and_get_text_model(
         config_params["text_model"],
-        dataset_dict,
-        vocab
+        dataset_dict
     )
 
     # Get Reinforcer
     reinforcer = set_and_get_reinforcer(
         config_params["reinforcer"],
         dataset_dict,
-        vocab,
         text_model
     )
 
@@ -387,13 +425,25 @@ def main(config_params):
         visualizer = set_and_get_visualizer(
             config_params["visualizer"],
             text_model,
-            vocab
+            dataset_dict["dataset_vocab"]
         )
         visualize_procedure(
             config_params["train_mode"]["4"],
             dataset_dict,
             text_model,
             visualizer
+        )
+    elif config_params["train_mode"]["select_mode"] == 6:
+        syntatic_procedure(
+            config_params["train_mode"]["6"],
+            dataset_dict,
+            reinforcer
+        )
+    elif config_params["train_mode"]["select_mode"] == 7:
+        test_procedure(
+            config_params["train_mode"]["7"],
+            dataset_dict,
+            text_model
         )
     else:
         raise ValueError

@@ -5,16 +5,16 @@ import torch.multiprocessing as mp
 from typing import Dict, List
 from itertools import repeat
 
-from lib.dataset import get_sst_ds, get_yelp_ds, get_sentimenmt_ds
+from lib.dataset import get_sst_ds, get_sentimenmt_ds
 from lib.embedder import TextEmbedder
-from lib.encoder import WordEncoder, TransformerEncoder
+from lib.encoder import TransformerEncoder
 from lib.classifier import TextClassifier
 from lib.model import SentimentModel
 from lib.trainer import TextTrainer, ReinforceTrainer
 from lib.augmenter import DeleteAugmenter, SwapAugmenter, BackTransAugmenter
 from lib.augmenter import IdentityAugmenter, InsertAugmenter, ReplaceAugmenter
 from lib.reinforcer import REINFORCER
-from lib.utils import load_obj, generate_and_save_augmentation_texts
+from lib.utils import save_obj, load_obj, generate_and_save_augmentation_texts, generate_syntatic_data
 from lib.visualizer import TSNEVisualizer, IsomapVisualizer
 
 from torch.utils.data import DataLoader
@@ -22,7 +22,7 @@ from allennlp.data import allennlp_collate
 from allennlp.data.fields import TextField
 from allennlp.data.vocabulary import Vocabulary
 from allennlp.data.dataset_readers.dataset_reader import AllennlpDataset, DatasetReader
-from allennlp.modules.token_embedders import Embedding, PretrainedTransformerEmbedder
+from allennlp.modules.token_embedders import PretrainedTransformerEmbedder
 from allennlp.training.metrics.categorical_accuracy import CategoricalAccuracy
 
 
@@ -49,17 +49,6 @@ def set_and_get_dataset(
             "test_ds": test_ds,
             "dataset_reader": dataset_reader
         }
-    elif dataset_params["select_dataset"] == "yelp":
-        train_ds, valid_ds, test_ds, dataset_reader = get_yelp_ds(
-            dataset_params["yelp"]
-        )
-
-        return {
-            "train_ds": train_ds,
-            "valid_ds": valid_ds,
-            "test_ds": test_ds,
-            "dataset_reader": dataset_reader
-        }
     elif dataset_params["select_dataset"] == "sentiment":
         train_ds, valid_ds, test_ds, dataset_reader = get_sentimenmt_ds(
             dataset_params["sentiment"]
@@ -76,58 +65,30 @@ def set_and_get_dataset(
         raise(KeyError)
 
 
-def set_and_get_vocab(
+def set_dataset_vocab(
     dataset_dict: Dict
 ) -> Vocabulary:
-    vocab = Vocabulary.from_instances(dataset_dict["train_ds"])
+    # dataset vocab is used to index the label
+    dataset_vocab = Vocabulary.from_instances(dataset_dict["train_ds"])
 
     # Index Dataset
-    dataset_dict["train_ds"].index_with(vocab)
-    dataset_dict["valid_ds"].index_with(vocab)
-    dataset_dict["test_ds"].index_with(vocab)
-
-    return vocab
-
-
-def set_and_get_word_embedder(
-    word_embedder_params: Dict,
-    vocab: Vocabulary
-):
-    if word_embedder_params["pretrained_embedding"]["pretrained_filepath"]:
-        print("Loading pretrained embedding for word_embedder ...")
-        pretrained_embedding = Embedding(
-            embedding_dim=word_embedder_params["pretrained_embedding"]["embedding_dim"],
-            pretrained_file=word_embedder_params["pretrained_embedding"]["pretrained_filepath"],
-            vocab=vocab,
-            trainable=word_embedder_params["trainable"]["trainable"],
-            projection_dim=word_embedder_params["trainable"]["projection_dim"]
-        )
-    else:
-        print("Random initialize embedding for word_embedder ...")
-        pretrained_embedding = Embedding(
-            embedding_dim=word_embedder_params["pretrained_embedding"]["embedding_dim"],
-            vocab=vocab,
-            trainable=word_embedder_params["trainable"]["trainable"],
-            projection_dim=word_embedder_params["trainable"]["projection_dim"]
-        )
-
-    token_indexers = {"tokens": pretrained_embedding}
-    word_embedder = TextEmbedder(token_indexers)
-
-    return word_embedder
+    dataset_dict["train_ds"].index_with(dataset_vocab)
+    dataset_dict["valid_ds"].index_with(dataset_vocab)
+    dataset_dict["test_ds"].index_with(dataset_vocab)
+    dataset_dict["dataset_vocab"] = dataset_vocab
 
 
-def set_and_get_transformer_embedder(
-    transformer_embedder_params: Dict
+def set_and_get_embedder(
+    embedder_params: Dict
 ):
     print(
         "Loading transformer pretrained embedding from \"{}\" ...".format(
-            transformer_embedder_params["model_name"]
+            embedder_params["model_name"]
         )
     )
     pretrained_embedding = PretrainedTransformerEmbedder(
-        model_name=transformer_embedder_params["model_name"],
-        train_parameters=transformer_embedder_params["train_parameters"]
+        model_name=embedder_params["model_name"],
+        train_parameters=embedder_params["train_parameters"]
     )
 
     token_indexers = {"tokens": pretrained_embedding}
@@ -136,60 +97,33 @@ def set_and_get_transformer_embedder(
     return transformer_embedder
 
 
-def set_and_get_embedder(
-    embedder_params: Dict,
-    vocab: Vocabulary
-):
-    if embedder_params["select_embedder"] == "word_embedder":
-        embedder = set_and_get_word_embedder(
-            embedder_params["word_embedder"],
-            vocab
-        )
-    elif embedder_params["select_embedder"] == "transformer_embedder":
-        embedder = set_and_get_transformer_embedder(
-            embedder_params["transformer_embedder"]
-        )
-    else:
-        raise KeyError("Unknowm embedder's name!")
-
-    return embedder
-
-
 def set_and_get_encoder(
-    encoder_params: Dict,
-    embedder
+    encoder_params: Dict
 ):
-    if encoder_params["select_encoder"] == "word_encoder":
-        encoder = WordEncoder(
-            input_size=embedder.get_output_dim(),
-            s2s_encoder_params=encoder_params["word_encoder"]["s2s_encoder"],
-            s2v_encoder_params=encoder_params["word_encoder"]["s2v_encoder"]
+    print(
+        "Loading transformer encoder from \"{}\" ...".format(
+            encoder_params["model_name"]
         )
-    elif encoder_params["select_encoder"] == "transformer_encoder":
-        encoder = TransformerEncoder(
-            encoder_params["transformer_encoder"]
-        )
-    else:
-        raise KeyError("Unknown encoder name!")
+    )
+    encoder = TransformerEncoder(
+        encoder_params
+    )
 
     return encoder
 
 
 def set_and_get_text_model(
     text_model_params: Dict,
-    dataset_dict: Dict,
-    vocab: Vocabulary
+    dataset_dict: Dict
 ) -> torch.nn.Module:
     # Set and get embedder
     embedder = set_and_get_embedder(
-        text_model_params["embedder"],
-        vocab
+        text_model_params["embedder"]
     )
 
     # Set and get encoder
     encoder = set_and_get_encoder(
         text_model_params["encoder"],
-        embedder
     )
 
     # Set and get classifier
@@ -203,7 +137,7 @@ def set_and_get_text_model(
 
     classifier = TextClassifier(
         input_size=encoder.get_output_dim(),
-        output_size=vocab.get_vocab_size("labels"),
+        output_size=dataset_dict["dataset_vocab"].get_vocab_size("labels"),
         feedforward_params=text_model_params["classifier"]["feedforward"]
     )
 
@@ -230,12 +164,11 @@ def set_and_get_text_model(
         raise(KeyError)
 
     text_model = SentimentModel(
-        vocab,
+        text_model_params,
+        dataset_dict,
         embedder,
         encoder,
-        classifier,
-        text_model_params,
-        dataset_dict
+        classifier
     )
 
     return text_model
@@ -244,54 +177,48 @@ def set_and_get_text_model(
 def set_and_get_reinforcer(
     reinforcer_params: Dict,
     dataset_dict: Dict,
-    vocab: Vocabulary,
     text_model: torch.nn.Module,
 ):
     # Get augmenter
     # Delete
     delete_augmenter = DeleteAugmenter(
         reinforcer_params["augmenter"]["delete_augmenter"],
-        vocab,
         dataset_dict
     )
 
     # Swap
     swap_augmenter = SwapAugmenter(
         reinforcer_params["augmenter"]["swap_augmenter"],
-        vocab,
         dataset_dict
     )
 
     # Replace
     replace_augmenter = ReplaceAugmenter(
         reinforcer_params["augmenter"]["replace_augmenter"],
-        vocab,
         dataset_dict
     )
 
     # Insert
     insert_augmenter = InsertAugmenter(
         reinforcer_params["augmenter"]["insert_augmenter"],
-        vocab,
         dataset_dict
     )
 
     # BackTrans
-    backtrans_augmenter = BackTransAugmenter(
-        reinforcer_params["augmenter"]["backtrans_augmenter"],
-        vocab,
-        dataset_dict
-    )
+    # backtrans_augmenter = BackTransAugmenter(
+    #     reinforcer_params["augmenter"]["backtrans_augmenter"],
+    #     dataset_dict
+    # )
 
     # Identity
-    identity_augmenter = IdentityAugmenter(dataset_dict["dataset_reader"].is_transformer)
+    identity_augmenter = IdentityAugmenter()
 
     augmenters = [
         delete_augmenter,
         swap_augmenter,
         replace_augmenter,
         insert_augmenter,
-        backtrans_augmenter
+        # backtrans_augmenter
     ]
 
     # Get selected augmenters
@@ -318,15 +245,14 @@ def set_and_get_reinforcer(
         raise(KeyError)
 
     reinforcer = REINFORCER(
-        text_model.embedder,
-        text_model.encoder,
-        text_model.classifier,
-        select_augmenters,
-        vocab,
         reinforcer_params["environment"],
         reinforcer_params["policy"],
         reinforcer_params["REINFORCE"],
-        dataset_dict
+        dataset_dict,
+        text_model.embedder,
+        text_model.encoder,
+        text_model.classifier,
+        select_augmenters
     )
 
     return reinforcer
@@ -465,15 +391,13 @@ def set_augments_to_dataset_instances(
     dataset_dict: Dict,
     augmented_instances_save_names: List
 ):
-    assert dataset_dict["dataset_reader"]._vocab is not None, "No vocab is given!"
-
     for save_name in augmented_instances_save_names:
         augment_texts = load_obj(save_name)
         print(augment_texts[400])
 
         for instance, augment_text in zip(dataset_dict["train_ds"].instances, augment_texts):
             field = TextField(
-                dataset_dict["dataset_reader"]._tokenizer.tokenize(
+                dataset_dict["dataset_reader"].transformer_tokenizer.tokenize(
                     augment_text
                 ),
                 dataset_dict["dataset_reader"]._indexers
@@ -481,7 +405,7 @@ def set_augments_to_dataset_instances(
             instance.add_field(
                 save_name,
                 field,
-                dataset_dict["dataset_reader"]._vocab
+                dataset_dict["dataset_reader"].transformer_vocab
             )
 
 
@@ -506,3 +430,39 @@ def set_and_get_visualizer(
         )
 
     return visualizer
+
+
+def set_and_save_syntatic_data(
+    syntatic_params: Dict,
+    dataset_dict: Dict,
+    reinforcer
+):
+    if syntatic_params["target"] == "train":
+        dataset = dataset_dict["train_ds"]
+    elif syntatic_params["target"] == "valid":
+        dataset = dataset_dict["valid_ds"]
+    elif syntatic_params["target"] == "test":
+        dataset = dataset_dict["test_ds"]
+    else:
+        raise ValueError
+
+    if syntatic_params["select_method"] == "eda":
+        save_path = syntatic_params["eda"]["save_path"]
+    elif syntatic_params["select_method"] == "backtrans":
+        save_path = syntatic_params["backtrans"]["save_path"]
+
+    import time
+    for repeat_idx in range(syntatic_params["repeat"]):
+        start_time = time.time()
+        syntatic_data = generate_syntatic_data(
+            dataset,
+            reinforcer,
+            syntatic_params["select_method"]
+        )
+
+        save_obj(
+            syntatic_data,
+            save_path + "_" + str(repeat_idx)
+        )
+
+        print("--- %s seconds ---" % (time.time() - start_time))

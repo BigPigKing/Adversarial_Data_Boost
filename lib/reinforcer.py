@@ -7,7 +7,6 @@ from typing import List, Dict
 from .loss import JsdCrossEntropy
 from .utils import get_sentence_from_text_field_tensors
 from .augmenter import Augmenter
-from allennlp.data import Vocabulary
 from allennlp.nn.util import get_token_ids_from_text_field_tensors, get_text_field_mask
 from allennlp.modules.feedforward import FeedForward
 
@@ -15,12 +14,12 @@ from allennlp.modules.feedforward import FeedForward
 class Environment(torch.nn.Module):
     def __init__(
         self,
+        env_params: Dict,
         embedder: torch.nn.Module,
         encoder: torch.nn.Module,
         classifier: torch.nn.Module,
         augmenter_list: List[Augmenter],
-        max_step: int,
-        env_params: Dict
+        max_step: int
     ):
         super(Environment, self).__init__()
         # Module initialization
@@ -156,11 +155,11 @@ class Environment(torch.nn.Module):
 class Policy(torch.nn.Module):
     def __init__(
         self,
+        policy_params: Dict,
         embedder: torch.nn.Module,
         encoder: torch.nn.Module,
         input_dim: int,
-        num_of_action: int,
-        policy_params
+        num_of_action: int
     ):
         super(Policy, self).__init__()
 
@@ -177,7 +176,8 @@ class Policy(torch.nn.Module):
 
         self.optimizer = policy_params["optimizer"]["select_optimizer"](
             self.parameters(),
-            lr=policy_params["optimizer"]["lr"])
+            lr=policy_params["optimizer"]["lr"]
+        )
 
     def select_action(
         self,
@@ -223,15 +223,14 @@ class Policy(torch.nn.Module):
 class REINFORCER(torch.nn.Module):
     def __init__(
         self,
-        embedder: torch.nn.Module,
-        encoder: torch.nn.Module,
-        classifier: torch.nn.Module,
-        augmenter_list: List[Augmenter],
-        vocab: Vocabulary,
         env_params: Dict,
         policy_params: Dict,
         REINFORCE_params: Dict,
-        dataset_dict: Dict
+        dataset_dict: Dict,
+        embedder: torch.nn.Module,
+        encoder: torch.nn.Module,
+        classifier: torch.nn.Module,
+        augmenter_list: List[Augmenter]
     ):
         super(REINFORCER, self).__init__()
 
@@ -240,35 +239,28 @@ class REINFORCER(torch.nn.Module):
         classifier.eval()
 
         self.policy = Policy(
+            policy_params,
             embedder,
             encoder,
             encoder.get_output_dim(),
-            len(augmenter_list),
-            policy_params
+            len(augmenter_list)
         )
         self.env = Environment(
+            env_params,
             embedder,
             encoder,
             classifier,
             augmenter_list,
             REINFORCE_params["max_step"],
-            env_params
         )
 
-        self.vocab = vocab
+        self.dataset_vocab = dataset_dict["dataset_vocab"]
+        self.transformer_tokenizer = dataset_dict["dataset_reader"].transformer_tokenizer
+        self.transformer_vocab = dataset_dict["dataset_reader"].transformer_vocab
 
         self.max_step = REINFORCE_params["max_step"]
         self.gamma = REINFORCE_params["gamma"]
         self.clip_grad = REINFORCE_params["clip_grad"]
-
-        # Dataset Related
-        self.text_field_names = dataset_dict["dataset_reader"].field_names["text"]
-        self.is_transformer = dataset_dict["dataset_reader"].is_transformer
-
-        if self.is_transformer is True:
-            self.transformer_vocab = dataset_dict["dataset_reader"]._vocab
-        else:
-            self.transformer_vocab = None
 
     def _get_token_of_sents(
         self,
@@ -284,10 +276,7 @@ class REINFORCER(torch.nn.Module):
     ):
         wrapped_token_of_sent = torch.stack([token_of_sent])
 
-        if self.is_transformer is True:
-            return {"tokens": {"token_ids": wrapped_token_of_sent}}
-        else:
-            return {"tokens": {"tokens": wrapped_token_of_sent}}
+        return {"tokens": {"token_ids": wrapped_token_of_sent}}
 
     def _calculate_loss(
         self,
@@ -338,10 +327,8 @@ class REINFORCER(torch.nn.Module):
         augmented_state = self.env.augmenter_list[action].augment(wrapped_token_of_sent)
 
         return get_sentence_from_text_field_tensors(
-            self.vocab,
+            self.transformer_tokenizer,
             augmented_state,
-            self.is_transformer,
-            is_tokenized=True
         )
 
     def BackTrans_augment(
@@ -351,10 +338,8 @@ class REINFORCER(torch.nn.Module):
         augmented_state = self.env.augmenter_list[0].augment(wrapped_token_of_sent)
 
         return get_sentence_from_text_field_tensors(
-            self.vocab,
-            augmented_state,
-            self.is_transformer,
-            is_tokenized=True
+            self.transformer_tokenizer,
+            augmented_state
         )
 
     def augment(
@@ -376,10 +361,8 @@ class REINFORCER(torch.nn.Module):
                 break
 
         return get_sentence_from_text_field_tensors(
-            self.vocab,
-            self.env.safe_state,
-            self.is_transformer,
-            is_tokenized=True
+            self.transformer_tokenizer,
+            self.env.safe_state
         )
 
     @overrides
@@ -392,7 +375,7 @@ class REINFORCER(torch.nn.Module):
         """
         output_dict = {}
 
-        wrapped_token_of_sent = episode[self.text_field_names[0]]
+        wrapped_token_of_sent = episode["text"]
 
         state = self.env.reset(wrapped_token_of_sent)
         log_probs = []
@@ -415,14 +398,12 @@ class REINFORCER(torch.nn.Module):
 
         # Prepare output dict
         output_dict["origin_sentence"] = get_sentence_from_text_field_tensors(
-            self.vocab,
-            wrapped_token_of_sent,
-            self.is_transformer
+            self.transformer_tokenizer,
+            wrapped_token_of_sent
         )
         output_dict["augment_sentence"] = get_sentence_from_text_field_tensors(
-            self.vocab,
-            self.env.safe_state,
-            self.is_transformer
+            self.transformer_tokenizer,
+            self.env.safe_state
         )
         output_dict["actions"] = actions
         output_dict["loss"] = loss

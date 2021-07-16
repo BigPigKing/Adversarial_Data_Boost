@@ -1,117 +1,22 @@
-import csv
 import logging
 import pandas as pd
 
 from sklearn.model_selection import train_test_split
 from .tokenizer import WordTokenizer
+from .utils import load_obj
 
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 from overrides import overrides
 from nltk.tree import Tree
 
 from allennlp.common.file_utils import cached_path
 from allennlp.common.checks import ConfigurationError
 from allennlp.data import DatasetReader, Instance, Vocabulary
-from allennlp.data.tokenizers import Token, PretrainedTransformerTokenizer
-from allennlp.data.token_indexers import SingleIdTokenIndexer, PretrainedTransformerIndexer
+from allennlp.data.tokenizers import PretrainedTransformerTokenizer
+from allennlp.data.token_indexers import PretrainedTransformerIndexer
 from allennlp.data.fields import LabelField, TextField, Field
 
 logger = logging.getLogger(__name__)
-
-
-@DatasetReader.register("yelp_tokens")
-class YelpReviewDatasetReader(DatasetReader):
-    def __init__(
-        self,
-        yelp_params: Dict,
-        **kwargs,
-    ) -> None:
-        super().__init__(**kwargs)
-
-        if yelp_params["transformer_model_name"] is None:
-            self._indexers = {
-                "tokens": SingleIdTokenIndexer()
-            }
-            self._tokenizer = WordTokenizer()
-            self._vocab = None
-            self.is_transformer = False
-        else:
-            self._indexers = {
-                "tokens": PretrainedTransformerIndexer(
-                    yelp_params["transformer_model_name"]
-                )
-            }
-            self._tokenizer = PretrainedTransformerTokenizer(
-                yelp_params["transformer_model_name"]
-            )
-            self._vocab = Vocabulary.from_pretrained_transformer(
-                yelp_params["transformer_model_name"]
-            )
-            self.is_transformer = True
-        self.detokenizer = WordTokenizer()
-
-        self.field_names = {
-            "text": [yelp_params["review_field_name"]],
-            "label": [yelp_params["label_field_name"]],
-            "augments": []
-        }  # Warning: Augments now only suitable for one original field
-
-    @overrides
-    def _read(self, file_path):
-        with open(file_path, "r") as data_file:
-            reader = csv.reader(data_file, delimiter=",")
-
-            for i, line in enumerate(reader):
-                review = line[1]
-                label = line[0]
-                instance = self.text_to_instance(review, label)
-
-                if instance is not None:
-                    yield instance
-                else:
-                    pass
-
-    def make_token(
-        self,
-        t: Union[str, Token]
-    ):
-        if isinstance(t, str):
-            return Token(t)
-        elif isinstance(t, Token):
-            return t
-        else:
-            raise ValueError("Tokens must be either str or Token.")
-
-    @overrides
-    def text_to_instance(
-        self,
-        text: str,
-        sentiment: str = None
-    ) -> Optional[Instance]:
-        tokens = self._tokenizer.tokenize(text)
-
-        if self.is_transformer is False:
-            tokens = [self.make_token(x) for x in tokens]
-        else:
-            pass
-
-        text_field = TextField(
-            tokens,
-            token_indexers=self._indexers
-        )
-        fields: Dict[str, Field] = {
-            self.field_names["text"][0]: text_field
-        }
-
-        if sentiment is not None:
-            fields[self.field_names["label"][0]] = LabelField(sentiment)
-        else:
-            pass
-
-        return Instance(fields)
-
-    def get_token_indexers(self):
-        return self._token_indexers
 
 
 @DatasetReader.register("CR")
@@ -123,34 +28,19 @@ class SentimentDatasetReader(DatasetReader):
     ) -> None:
         super().__init__(**kwargs)
 
-        if dataset_params["transformer_model_name"] is None:
-            self._indexers = {
-                "tokens": SingleIdTokenIndexer()
-            }
-            self._tokenizer = WordTokenizer()
-            self._vocab = None
-            self.is_transformer = False
-        else:
-            self._indexers = {
-                "tokens": PretrainedTransformerIndexer(
-                    dataset_params["transformer_model_name"]
-                )
-            }
-            self._tokenizer = PretrainedTransformerTokenizer(
+        self._indexers = {
+            "tokens": PretrainedTransformerIndexer(
                 dataset_params["transformer_model_name"]
             )
-            self._vocab = Vocabulary.from_pretrained_transformer(
-                dataset_params["transformer_model_name"]
-            )
-            self.is_transformer = True
+        }
+        self.transformer_tokenizer = PretrainedTransformerTokenizer(
+            dataset_params["transformer_model_name"]
+        )
+        self.transformer_vocab = Vocabulary.from_pretrained_transformer(
+            dataset_params["transformer_model_name"]
+        )
         self.detokenizer = WordTokenizer()
         self.max_length = dataset_params["max_length"]
-
-        self.field_names = {
-            "text": [dataset_params["review_field_name"]],
-            "label": [dataset_params["label_field_name"]],
-            "augments": []
-        }  # Warning: Augments now only suitable for one original field
 
     @overrides
     def _read(self, file_path):
@@ -167,40 +57,24 @@ class SentimentDatasetReader(DatasetReader):
             else:
                 pass
 
-    def make_token(
-        self,
-        t: Union[str, Token]
-    ):
-        if isinstance(t, str):
-            return Token(t)
-        elif isinstance(t, Token):
-            return t
-        else:
-            raise ValueError("Tokens must be either str or Token.")
-
     @overrides
     def text_to_instance(
         self,
         text: str,
         sentiment: str = None
     ) -> Optional[Instance]:
-        tokens = self._tokenizer.tokenize(text)
-
-        if self.is_transformer is False:
-            tokens = [self.make_token(x) for x in tokens]
-        else:
-            pass
+        tokens = self.transformer_tokenizer.tokenize(text)
 
         text_field = TextField(
             tokens,
             token_indexers=self._indexers
         )
         fields: Dict[str, Field] = {
-            self.field_names["text"][0]: text_field
+            "text": text_field
         }
 
         if sentiment is not None:
-            fields[self.field_names["label"][0]] = LabelField(sentiment)
+            fields["label"] = LabelField(sentiment)
         else:
             pass
 
@@ -246,29 +120,28 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
     ) -> None:
         super().__init__(**kwargs)
 
-        if sst_params["transformer_model_name"] is None:
-            self._indexers = {
-                "tokens": SingleIdTokenIndexer()
-            }
-            self._tokenizer = WordTokenizer()
-            self._vocab = None
-            self.is_transformer = False
-        else:
-            self._indexers = {
-                "tokens": PretrainedTransformerIndexer(
-                    sst_params["transformer_model_name"]
-                )
-            }
-            self._tokenizer = PretrainedTransformerTokenizer(
+        self._indexers = {
+            "tokens": PretrainedTransformerIndexer(
                 sst_params["transformer_model_name"]
             )
-            self._vocab = Vocabulary.from_pretrained_transformer(
-                sst_params["transformer_model_name"]
-            )
-            self.is_transformer = True
+        }
+
+        self.transformer_tokenizer = PretrainedTransformerTokenizer(
+            sst_params["transformer_model_name"]
+        )
+
+        self.transformer_vocab = Vocabulary.from_pretrained_transformer(
+            sst_params["transformer_model_name"]
+        )
+
         self._use_subtrees = sst_params["use_subtrees"]
         self.detokenizer = WordTokenizer()
         self.max_length = sst_params["max_length"]
+        self.robust_test = False
+        if sst_params["noise_datapath"] != "none":
+            self.noise_data = load_obj(sst_params["noise_datapath"])
+        else:
+            self.noise_data = None
 
         allowed_granularities = ["5-class", "3-class", "2-class"]
 
@@ -279,17 +152,12 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                 )
             )
         self._granularity = sst_params["granularity"]
-        self.field_names = {
-            "text": [sst_params["review_field_name"]],
-            "label": [sst_params["label_field_name"]],
-            "augments": []
-        }  # Warning: Augments now only suitable for one original field
 
     @overrides
     def _read(self, file_path):
         with open(cached_path(file_path), "r") as data_file:
             logger.info("Reading instances from lines in file at: %s", file_path)
-            for line in data_file.readlines():
+            for idx, line in enumerate(data_file.readlines()):
                 line = line.strip("\n")
                 if not line:
                     continue
@@ -303,23 +171,21 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                         if instance is not None:
                             yield instance
                 else:
+                    if self.robust_test is True and self.noise_data is not None:
+                        text = self.noise_data[idx]
+                        print("origin")
+                        print(self.detokenizer.detokenize(parsed_line.leaves()))
+                        print("augment")
+                        print(text)
+                    else:
+                        text = self.detokenizer.detokenize(parsed_line.leaves())
+
                     instance = self.text_to_instance(
-                        self.detokenizer.detokenize(parsed_line.leaves()),
+                        text,
                         parsed_line.label()
                     )
                     if instance is not None:
                         yield instance
-
-    def make_token(
-        self,
-        t: Union[str, Token]
-    ):
-        if isinstance(t, str):
-            return Token(t)
-        elif isinstance(t, Token):
-            return t
-        else:
-            raise ValueError("Tokens must be either str or Token.")
 
     @overrides
     def text_to_instance(
@@ -327,19 +193,14 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
         text: str,
         sentiment: str = None
     ) -> Optional[Instance]:
-        tokens = self._tokenizer.tokenize(text)
-
-        if self.is_transformer is False:
-            tokens = [self.make_token(x) for x in tokens]
-        else:
-            pass
+        tokens = self.transformer_tokenizer.tokenize(text)
 
         text_field = TextField(
             tokens[:self.max_length],
             token_indexers=self._indexers
         )
         fields: Dict[str, Field] = {
-            self.field_names["text"][0]: text_field
+            "text": text_field
         }
 
         if sentiment is not None:
@@ -357,7 +218,7 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                     return None
                 else:
                     sentiment = "1"
-            fields[self.field_names["label"][0]] = LabelField(sentiment)
+            fields["label"] = LabelField(sentiment)
         else:
             pass
 
@@ -389,23 +250,10 @@ def get_sst_ds(
     else:
         pass
     valid_ds = sst_dataset_reader.read(valid_data_path)
+    sst_dataset_reader.robust_test = True
     test_ds = sst_dataset_reader.read(test_data_path)
 
     return train_ds, valid_ds, test_ds, sst_dataset_reader
-
-
-def get_yelp_ds(
-    train_data_path="data/yelp_review_full/train.csv",
-    valid_data_path="data/yelp_review_full/valid.csv",
-    test_data_path="data/yelp_review_full/test.csv",
-    train_data_proportion=1
-):
-    yelp_dataset_reader = YelpReviewDatasetReader()
-    train_ds = yelp_dataset_reader.read(train_data_path)
-    valid_ds = yelp_dataset_reader.read(valid_data_path)
-    test_ds = yelp_dataset_reader.read(test_data_path)
-
-    return train_ds, valid_ds, test_ds, yelp_dataset_reader
 
 
 def split_dataset(
@@ -447,24 +295,6 @@ def get_sentimenmt_ds(
     )
 
     return train_ds, valid_ds, test_ds, sentiment_dataset_reader
-
-
-def split_proportion_csv(
-    file_path,
-    output_path,
-    proportion,
-    delimiter=","
-):
-    from sklearn.model_selection import train_test_split
-
-    with open(file_path, 'r') as f:
-        lines = f.read().splitlines()
-
-    train, test = train_test_split(lines, train_size=proportion)
-
-    with open(file_path + str(proportion), 'w+') as f:
-        for line in train:
-            f.write(line+delimiter)
 
 
 def main():

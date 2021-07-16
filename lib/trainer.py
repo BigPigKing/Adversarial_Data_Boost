@@ -271,6 +271,18 @@ class TextTrainer(Trainer):
 
         return loss_dict, avg_acc
 
+    def predict(
+        self,
+        test_data_loader: torch.utils.data.DataLoader
+    ):
+        self.train_model.eval()
+        with torch.no_grad():
+            test_avg_loss, test_avg_acc = self._fit_valid(test_data_loader)
+
+        print("Testing Loss             : {:.5f}".format(test_avg_loss))
+        print("Testing Acc              : {:.5f}".format(test_avg_acc))
+        print("----------------------------------------------")
+
     @overrides
     def fit(
         self,

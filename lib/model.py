@@ -1,27 +1,22 @@
 import torch
 
 from .loss import JsdCrossEntropy
-from typing import List, Dict
+from typing import Dict, List
 from overrides import overrides
 from transformers import get_linear_schedule_with_warmup
-from allennlp.data.vocabulary import Vocabulary
 from allennlp.nn.util import get_text_field_mask
 
 
 class SentimentModel(torch.nn.Module):
     def __init__(
         self,
-        vocab: Vocabulary,
-        embedder: torch.nn.Module,
-        encoder: torch.nn.ModuleList,
-        classifier: torch.nn.ModuleList,
         sentiment_model_params: Dict,
         dataset_dict: Dict,
-        is_finetune: bool = False
+        embedder: torch.nn.Module,
+        encoder: torch.nn.ModuleList,
+        classifier: torch.nn.ModuleList
     ):
         super(SentimentModel, self).__init__()
-        # Model Augmenter
-        self.vocab = vocab
 
         # Small Module
         self.embedder = embedder
@@ -59,11 +54,6 @@ class SentimentModel(torch.nn.Module):
         self.max_norm = sentiment_model_params["clip_grad"]["max_norm"]
         self.norm_type = sentiment_model_params["clip_grad"]["norm_type"]
 
-        self.is_finetune = is_finetune
-
-        # Field Names
-        self.text_field_names = dataset_dict["dataset_reader"].field_names["text"]
-        self.label_field_names = dataset_dict["dataset_reader"].field_names["label"]
         self.augment_field_names = None
 
     def set_augment_field_names(
@@ -87,10 +77,7 @@ class SentimentModel(torch.nn.Module):
         encode_X = self.encoder(embed_X, tokens_mask)
 
         # Classfiy
-        if self.is_finetune:
-            pred_Y = self.classifier(encode_X.detach())
-        else:
-            pred_Y = self.classifier(encode_X)
+        pred_Y = self.classifier(encode_X)
 
         # Get all the loss
         classification_loss = self.classification_criterion(
@@ -107,8 +94,8 @@ class SentimentModel(torch.nn.Module):
         output_dict = {}
 
         # Get input from dict
-        token_X = batch[self.text_field_names[0]]
-        label_Y = batch[self.label_field_names[0]]
+        token_X = batch["text"]
+        label_Y = batch["label"]
 
         # Get Cross entropy Loss
         classification_loss, predicts = self._get_classification_loss_and_predicts(
@@ -128,8 +115,8 @@ class SentimentModel(torch.nn.Module):
         output_dict = {}
 
         # Get input from dict
-        origin_token_X = batch[self.text_field_names[0]]
-        origin_label_Y = batch[self.label_field_names[0]]
+        origin_token_X = batch["text"]
+        origin_label_Y = batch["label"]
 
         # Get Origin Cross entropy Loss
         origin_classification_loss, origin_predicts = self._get_classification_loss_and_predicts(

@@ -4,73 +4,35 @@
     },
 
     "dataset": {
-        "select_dataset": "sentiment",
+        "select_dataset": "sst",
         "sst": {
             "granularity": "5-class",
             "transformer_model_name": "roberta-base",
             "use_subtrees": false,
             "proportion": 1,
             "max_length": 500,
-            "review_field_name": "tokens",
-            "label_field_name": "label"
-        },
-        "yelp": {
-            "proportion": 1,
-            "transformer_model_name": "roberta-base",
-            "review_field_name": "tokens",
-            "label_field_name": "label"
+            "noise_datapath": "none"
         },
         "sentiment": {
             "datapath": "data/subj/SUBJ.pkl",
             "transformer_model_name": "roberta-base",
-            "max_length": 500,
-            "review_field_name": "tokens",
-            "label_field_name": "label"
+            "max_length": 500
         }
     },
 
     "text_model": {
         "embedder": {
-            "select_embedder": "transformer_embedder",
-            "word_embedder": {
-                "pretrained_embedding": {
-                    "embedding_dim": 300,
-                    "pretrained_filepath": "pretrained_weight/glove.840B.300d.txt"
-                },
-                "embedding_dim": 300,
-                "trainable": {
-                    "trainable": true,
-                    "projection_dim": 300
-                }
-            },
-            "transformer_embedder": {
-                "model_name": "roberta-base",
-                "train_parameters": true
-            }
+            "model_name": "roberta-base",
+            "train_parameters": true
         },
         "encoder": {
-            "select_encoder": "transformer_encoder",
-            "word_encoder": {
-                "s2s_encoder": {
-                    "hidden_size": 300,
-                    "num_layers": 3,
-                    "bidirectional": true
-                },
-                "s2v_encoder": {
-                    "hidden_size": 300,
-                    "num_layers": 3,
-                    "bidirectional": true
-                }
-            },
-            "transformer_encoder": {
-                "model_name": "roberta-base",
-                "dropout": 0.3
-            }
+            "model_name": "roberta-base",
+            "dropout": 0.3
         },
         "classifier": {
             "feedforward": {
-                "num_layers": 1,
-                "hidden_dims": [50],
+                "num_layers": 3,
+                "hidden_dims": [300, 150, 75],
                 "activations": "silu",
                 "dropout": 0.3
             }
@@ -389,7 +351,10 @@
                 "epochs": 12,
                 "is_save": true,
                 "augmented_instance": [
-                    "model_record/augments/augment1"
+                    "data/syntatic_data/sst/eda/mag_0.1_0",
+                    "data/syntatic_data/sst/eda/mag_0.1_1",
+                    "data/syntatic_data/sst/eda/mag_0.1_2",
+                    "data/syntatic_data/sst/eda/mag_0.1_3"
                 ]
             }
         },
@@ -452,6 +417,41 @@
                     "model_record/augments/augment31",
                     "model_record/augments/augment32",
                     "model_record/augments/augment33"
+                ]
+            }
+        },
+        "6": {
+            "syntatic": {
+                "target": "test",
+                "select_method": "eda",
+                "repeat": 1,
+                "eda": {
+                    "save_path": "data/syntatic_data/sst/noise/random/mag_0.1"
+                },
+                "backtrans": {
+                    "save_path": "data/syntatic_data/sst/backtrans/batcktrans"
+                }
+            }
+        },
+        "7": {
+            "pretrained_text_model": {
+                "embedder": "model_record/text_model_weights/embedder.pkl",
+                "encoder": "model_record/text_model_weights/encoder.pkl",
+                "classifier": "model_record/text_model_weights/classifier.pkl"
+            },
+
+            "text_finetuner": {
+                "dataloader": {
+                    "train_batch_size": 32,
+                    "valid_batch_size": 300,
+                    "test_batch_size": 300,
+                    "shuffle": true
+                },
+                "accumulated_step": 1,
+                "epochs": 12,
+                "is_save": false,
+                "augmented_instance": [
+                    "model_record/augments/augment3"
                 ]
             }
         }

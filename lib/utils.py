@@ -7,12 +7,10 @@ from nltk.corpus import wordnet
 from typing import Dict, List
 from allennlp.data import Vocabulary, DatasetReader, allennlp_collate
 from allennlp.data.dataset_readers.dataset_reader import AllennlpDataset
-from allennlp.data.tokenizers import PretrainedTransformerTokenizer
 
 
 def unpad_text_field_tensors(
     text_field_tensors: Dict[str, Dict[str, torch.Tensor]],
-    is_transformer: bool,
     padded_idx: int = 0
 ) -> List[torch.Tensor]:
     """
@@ -27,15 +25,10 @@ def unpad_text_field_tensors(
             B = num_of_batch, M = unpadded sequence lenth for different sentence
     """
     text_tensor_list = []
-
-    if is_transformer is True:
-        target_text_field_tensor = text_field_tensors["tokens"]["token_ids"]
-    else:
-        target_text_field_tensor = text_field_tensors["tokens"]["tokens"]
+    target_text_field_tensor = text_field_tensors["tokens"]["token_ids"]
 
     for sent in target_text_field_tensor:
         # sent_len = len(sent) - (sent == padded_idx).sum()
-
         text_tensor_list.append(sent.clone())
 
     if len(text_tensor_list) != 1:
@@ -46,7 +39,6 @@ def unpad_text_field_tensors(
 
 def pad_text_tensor_list(
     text_tensor_list: List[torch.tensor],
-    is_transformer: bool,
     indexer=None,
     padded_idx: int = 0
 ):
@@ -62,27 +54,20 @@ def pad_text_tensor_list(
             B = num_of_batch, S = padded sequence
 
     """
+    padding_length = len(text_tensor_list[0]["token_ids"])
+    text_tensor_dict = indexer.as_padded_tensor_dict(
+        text_tensor_list[0],  # Allennlp only accept one element [BUG Alert]!
+        padding_lengths={
+            "token_ids": padding_length,
+            "mask": padding_length,
+            "type_ids": padding_length
+        }
+    )
 
-    if is_transformer is True:
-        assert indexer, "Use transformer but cannot find indexer!"
+    for key, value in text_tensor_dict.items():
+        text_tensor_dict[key] = value.unsqueeze(0)
 
-        padding_length = len(text_tensor_list[0]["token_ids"])
-        text_tensor_dict = indexer.as_padded_tensor_dict(
-            text_tensor_list[0],  # Allennlp only accept one element [BUG Alert]!
-            padding_lengths={
-                "token_ids": padding_length,
-                "mask": padding_length,
-                "type_ids": padding_length
-            }
-        )
-
-        for key, value in text_tensor_dict.items():
-            text_tensor_dict[key] = value.unsqueeze(0)
-
-        return {"tokens": text_tensor_dict}
-    else:
-        padded_text_tensor = torch.nn.utils.rnn.pad_sequence(text_tensor_list, batch_first=True)
-        return {"tokens": {"tokens": padded_text_tensor}}
+    return {"tokens": text_tensor_dict}
 
 
 def add_wordnet_to_vocab(
@@ -101,38 +86,14 @@ def add_wordnet_to_vocab(
 
 
 def get_sentence_from_text_field_tensors(
-    vocab: Vocabulary,
-    text_field_tensors: Dict[str, Dict[str, torch.Tensor]],
-    is_transformer: bool,
-    is_tokenized=False
+    transformer_tokenizer,
+    text_field_tensors: Dict[str, Dict[str, torch.Tensor]]
 ):
-    # Warning: Trash Code.
-    tokenizer = PretrainedTransformerTokenizer(
-        "roberta-base"
+    sentences_token_ids = text_field_tensors["tokens"]["token_ids"].int().tolist()
+    return transformer_tokenizer.tokenizer.decode(
+        sentences_token_ids[0],
+        skip_special_tokens=True
     )
-    if is_transformer is True:
-        sentences_token_ids = text_field_tensors["tokens"]["token_ids"].int().tolist()
-        return tokenizer.tokenizer.decode(
-            sentences_token_ids[0],
-            skip_special_tokens=True
-        )
-    else:
-        sentences_token_ids = text_field_tensors["tokens"]["tokens"].int().tolist()
-
-    sentences = []
-
-    for sentence_token_ids in sentences_token_ids:
-        sentence_tokens = []
-
-        for sentence_token_id in sentence_token_ids:
-            sentence_tokens.append(vocab.get_token_from_index(sentence_token_id))
-
-        if is_tokenized is False:
-            sentences.append(' '.join(sentence_tokens))
-        else:
-            sentences.append(sentence_tokens)
-
-    return sentences
 
 
 def augment_and_get_texts_from_dataset(
@@ -149,12 +110,32 @@ def augment_and_get_texts_from_dataset(
         episode = move_to_device(episode, 0)
 
         # Get augment string from reinforcer
+        augment_text = reinforcer.augment(episode["text"])
+
+        augment_texts.append(augment_text)
+
+    return augment_texts
+
+
+def generate_syntatic_data(
+    dataset: AllennlpDataset,
+    reinforcer,
+    select_mode: str
+):
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=allennlp_collate)
+
+    augment_texts = []
+
+    for episode_idx, episode in enumerate(dataloader):
+        episode = move_to_device(episode, 0)
+
+        # Get augment string from reinforcer
         if select_mode == "default":
-            augment_text = reinforcer.augment(episode["tokens"])
+            augment_text = reinforcer.augment(episode["text"])
         elif select_mode == "eda":
-            augment_text = reinforcer.EDA_augment(episode["tokens"])
+            augment_text = reinforcer.EDA_augment(episode["text"])
         elif select_mode == "backtrans":
-            augment_text = reinforcer.BackTrans_augment(episode["tokens"])
+            augment_text = reinforcer.BackTrans_augment(episode["text"])
 
         augment_texts.append(augment_text)
 
