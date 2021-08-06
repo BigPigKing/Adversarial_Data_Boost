@@ -1,6 +1,7 @@
 import torch
 import pickle
 
+from tqdm import tqdm
 from allennlp.nn.util import move_to_device
 from torch.utils.data import DataLoader
 from nltk.corpus import wordnet
@@ -120,20 +121,22 @@ def augment_and_get_texts_from_dataset(
 def generate_syntatic_data(
     dataset: AllennlpDataset,
     reinforcer,
-    select_mode: str
+    select_mode: str,
+    mode_params: Dict,
 ):
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=allennlp_collate)
 
     augment_texts = []
 
-    for episode_idx, episode in enumerate(dataloader):
+    for episode_idx, episode in tqdm(enumerate(dataloader)):
         episode = move_to_device(episode, 0)
 
         # Get augment string from reinforcer
         if select_mode == "default":
+            reinforcer.policy.load_state_dict(torch.load(mode_params["policy_weight"] + ".pkl"))
             augment_text = reinforcer.augment(episode["text"])
         elif select_mode == "eda":
-            augment_text = reinforcer.EDA_augment(episode["text"])
+            augment_text = reinforcer.EDA_augment(episode["text"], mode_params)
         elif select_mode == "backtrans":
             augment_text = reinforcer.BackTrans_augment(episode["text"])
 

@@ -14,7 +14,7 @@
             "noise_datapath": "none"
         },
         "sentiment": {
-            "datapath": "data/subj/SUBJ.pkl",
+            "datapath": "data/cr/CR.pkl",
             "transformer_model_name": "roberta-base",
             "max_length": 500
         }

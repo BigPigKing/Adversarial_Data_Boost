@@ -407,7 +407,6 @@ def main(config_params):
             reinforcer
         )
     elif config_params["train_mode"]["select_mode"] == 3:
-        text_model.is_finetune = False
         finetune_procedure(
             config_params["train_mode"]["3"],
             dataset_dict,
@@ -415,7 +414,6 @@ def main(config_params):
             reinforcer
         )
     elif config_params["train_mode"]["select_mode"] == 4:
-        text_model.is_finetune = False
         train_with_augmented_data_from_scratch(
             config_params["train_mode"]["4"],
             dataset_dict,

@@ -163,7 +163,7 @@ class TextTrainer(Trainer):
         self.accumulated_step = text_trainer_params["accumulated_step"]
 
         self.augment_loss_multiplier = 0.6
-        self.consistency_loss_multiplier = 0.99
+        self.consistency_loss_multiplier = 0
         self.contrastive_loss_multiplier = 0.3
 
         self.GPU = next(train_model.parameters()).get_device()

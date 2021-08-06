@@ -165,7 +165,7 @@ class SwapAugmenter(Augmenter):
             return tokens
         else:
             # Sample swap index
-            select_idxs = random.sample(range(len(tokens)), max(len(tokens) * self.magnitude, 2))
+            select_idxs = random.sample(range(len(tokens)), max(int(len(tokens) * self.magnitude), 2))
             swap_idxs = copy.deepcopy(select_idxs)
             random.shuffle(select_idxs)
             swap_tokens = [copy.deepcopy(tokens[x]) for x in swap_idxs]

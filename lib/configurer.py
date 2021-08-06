@@ -81,6 +81,7 @@ def set_dataset_vocab(
 def set_and_get_embedder(
     embedder_params: Dict
 ):
+    print(embedder_params)
     print(
         "Loading transformer pretrained embedding from \"{}\" ...".format(
             embedder_params["model_name"]
@@ -205,10 +206,10 @@ def set_and_get_reinforcer(
     )
 
     # BackTrans
-    # backtrans_augmenter = BackTransAugmenter(
-    #     reinforcer_params["augmenter"]["backtrans_augmenter"],
-    #     dataset_dict
-    # )
+    backtrans_augmenter = BackTransAugmenter(
+        reinforcer_params["augmenter"]["backtrans_augmenter"],
+        dataset_dict
+    )
 
     # Identity
     identity_augmenter = IdentityAugmenter()
@@ -218,7 +219,7 @@ def set_and_get_reinforcer(
         swap_augmenter,
         replace_augmenter,
         insert_augmenter,
-        # backtrans_augmenter
+        backtrans_augmenter
     ]
 
     # Get selected augmenters
@@ -450,6 +451,8 @@ def set_and_save_syntatic_data(
         save_path = syntatic_params["eda"]["save_path"]
     elif syntatic_params["select_method"] == "backtrans":
         save_path = syntatic_params["backtrans"]["save_path"]
+    elif syntatic_params["select_method"] == "default":
+        save_path = syntatic_params["default"]["save_path"]
 
     import time
     for repeat_idx in range(syntatic_params["repeat"]):
@@ -457,7 +460,8 @@ def set_and_save_syntatic_data(
         syntatic_data = generate_syntatic_data(
             dataset,
             reinforcer,
-            syntatic_params["select_method"]
+            syntatic_params["select_method"],
+            syntatic_params[syntatic_params["select_method"]]
         )
 
         save_obj(

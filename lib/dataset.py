@@ -173,10 +173,6 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                 else:
                     if self.robust_test is True and self.noise_data is not None:
                         text = self.noise_data[idx]
-                        print("origin")
-                        print(self.detokenizer.detokenize(parsed_line.leaves()))
-                        print("augment")
-                        print(text)
                     else:
                         text = self.detokenizer.detokenize(parsed_line.leaves())
 

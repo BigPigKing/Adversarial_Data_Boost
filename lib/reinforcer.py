@@ -321,10 +321,13 @@ class REINFORCER(torch.nn.Module):
 
     def EDA_augment(
         self,
-        wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]]
+        wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]],
+        mode_params: Dict
     ):
-        action = random.choice(range(len(self.env.augmenter_list) - 1))
-        augmented_state = self.env.augmenter_list[action].augment(wrapped_token_of_sent)
+        augmented_state = wrapped_token_of_sent
+        for stack_step in range(mode_params["stack_step"]):
+            action = random.choice(range(len(self.env.augmenter_list) - 1))
+            augmented_state = self.env.augmenter_list[action].augment(augmented_state)
 
         return get_sentence_from_text_field_tensors(
             self.transformer_tokenizer,
@@ -349,10 +352,12 @@ class REINFORCER(torch.nn.Module):
         state = self.env.reset(wrapped_token_of_sent)
         log_probs = []
         rewards = []
+        actions = []
 
         for step in range(self.max_step):
             action, action_log_prob = self.policy.select_action(state)
             state, reward, done = self.env.step(action)
+            actions.append(action)
 
             log_probs.append(action_log_prob)
             rewards.append(reward)
