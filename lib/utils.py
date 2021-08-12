@@ -1,6 +1,7 @@
 import torch
 import pickle
 
+from .embedder import UniversalSentenceEmbedder
 from tqdm import tqdm
 from allennlp.nn.util import move_to_device
 from torch.utils.data import DataLoader
@@ -111,7 +112,7 @@ def augment_and_get_texts_from_dataset(
         episode = move_to_device(episode, 0)
 
         # Get augment string from reinforcer
-        augment_text = reinforcer.augment(episode["text"])
+        augment_text = reinforcer.augment(episode)
 
         augment_texts.append(augment_text)
 
@@ -160,6 +161,9 @@ def generate_and_save_augmentation_texts(
         print("Generating augmented instances with {}".format(policy_weight_path))
         # Load pretrained_weight
         reinforcer.policy.load_state_dict(torch.load(policy_weight_path + ".pkl"))
+        reinforcer.env.USE_embedder = UniversalSentenceEmbedder(
+            reinforcer.transformer_tokenizer
+        )
 
         # Get Augmented Sentence
         augmentation_texts = augment_and_get_texts_from_dataset(

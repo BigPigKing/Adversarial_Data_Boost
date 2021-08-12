@@ -1,6 +1,7 @@
 import torch
 
-from .loss import JsdCrossEntropy
+from pytorch_metric_learning import losses
+from .loss import JsdCrossEntropy, EntropyLoss
 from typing import Dict, List
 from overrides import overrides
 from transformers import get_linear_schedule_with_warmup
@@ -25,8 +26,9 @@ class SentimentModel(torch.nn.Module):
 
         # Loss initiailization
         self.classification_criterion = sentiment_model_params["criterions"]["classification_criterion"]
-        self.contrastive_criterion = sentiment_model_params["criterions"]["contrastive_criterion"]
+        self.contrastive_criterion = losses.SupConLoss()
         self.consistency_criterion = JsdCrossEntropy()
+        self.entropy_criterion = EntropyLoss()
 
         # Optimizer initialization
         self.optimizer = sentiment_model_params["optimizer"]["select_optimizer"](
@@ -62,11 +64,10 @@ class SentimentModel(torch.nn.Module):
     ):
         self.augment_field_names = augment_field_names
 
-    def _get_classification_loss_and_predicts(
+    def _get_encoded_X(
         self,
-        token_X: torch.Tensor,
-        label_Y: torch.Tensor
-    ) -> Dict:
+        token_X
+    ):
         # Embedded first
         embed_X = self.embedder(token_X)
 
@@ -76,6 +77,13 @@ class SentimentModel(torch.nn.Module):
         # Encode
         encode_X = self.encoder(embed_X, tokens_mask)
 
+        return encode_X
+
+    def _get_classification_loss_and_predicts(
+        self,
+        encode_X: torch.Tensor,
+        label_Y: torch.Tensor
+    ) -> Dict:
         # Classfiy
         pred_Y = self.classifier(encode_X)
 
@@ -94,12 +102,12 @@ class SentimentModel(torch.nn.Module):
         output_dict = {}
 
         # Get input from dict
-        token_X = batch["text"]
+        encode_X = self._get_encoded_X(batch["text"])
         label_Y = batch["label"]
 
         # Get Cross entropy Loss
         classification_loss, predicts = self._get_classification_loss_and_predicts(
-            token_X,
+            encode_X,
             label_Y
         )
 
@@ -115,12 +123,12 @@ class SentimentModel(torch.nn.Module):
         output_dict = {}
 
         # Get input from dict
-        origin_token_X = batch["text"]
+        origin_encode_X = self._get_encoded_X(batch["text"])
         origin_label_Y = batch["label"]
 
         # Get Origin Cross entropy Loss
         origin_classification_loss, origin_predicts = self._get_classification_loss_and_predicts(
-            origin_token_X,
+            origin_encode_X,
             origin_label_Y
         )
 
@@ -129,17 +137,42 @@ class SentimentModel(torch.nn.Module):
 
         total_augment_loss = 0
         total_consistency_loss = 0
-        for augment_field_name in self.augment_field_names:
-            augment_classification_loss, augment_predicts = self._get_classification_loss_and_predicts(
-                batch[augment_field_name],
-                origin_label_Y
-            )
-            total_augment_loss += augment_classification_loss
-            total_consistency_loss += self.consistency_criterion(origin_predicts, augment_predicts)
+
+        total_encode_augment_X = self._get_encoded_X(batch[self.augment_field_names[0]])
+        total_augment_Y = origin_label_Y
+        total_origin_predicts = origin_predicts
+
+        for augment_field_name in self.augment_field_names[1:]:
+            new_encode_augment_X = self._get_encoded_X(batch[augment_field_name])
+            total_encode_augment_X = torch.cat([
+                total_encode_augment_X,
+                new_encode_augment_X
+            ])
+            total_augment_Y = torch.cat([total_augment_Y, origin_label_Y])
+            total_origin_predicts = torch.cat([total_origin_predicts, origin_predicts])
+
+        total_augment_loss, total_augment_predicts = self._get_classification_loss_and_predicts(
+            total_encode_augment_X,
+            total_augment_Y
+        )
+        total_consistency_loss = self.consistency_criterion(
+            total_origin_predicts,
+            total_augment_predicts
+        )
+        total_sc_loss = self.contrastive_criterion(
+            torch.cat([origin_encode_X, total_encode_augment_X]),
+            torch.cat([origin_label_Y, total_augment_Y])
+        )
+
+        total_entropy_loss = self.entropy_criterion(
+            torch.cat([origin_predicts, total_augment_predicts])
+        )
 
         output_dict["origin_classification_loss"] = origin_classification_loss
-        output_dict["total_augment_loss"] = total_augment_loss / len(self.augment_field_names)
+        output_dict["total_augment_loss"] = total_augment_loss
         output_dict["total_consistency_loss"] = total_consistency_loss
+        output_dict["total_sc_loss"] = total_sc_loss
+        output_dict["total_entropy_loss"] = total_entropy_loss
         output_dict["predicts"] = torch.argmax(origin_predicts, dim=1)
 
         return output_dict

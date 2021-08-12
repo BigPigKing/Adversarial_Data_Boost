@@ -4,7 +4,8 @@ import numpy as np
 
 from overrides import overrides
 from typing import List, Dict
-from .loss import JsdCrossEntropy
+from .loss import JsdCrossEntropy, IBLoss
+from .embedder import UniversalSentenceEmbedder
 from .utils import get_sentence_from_text_field_tensors
 from .augmenter import Augmenter
 from allennlp.nn.util import get_token_ids_from_text_field_tensors, get_text_field_mask
@@ -18,8 +19,8 @@ class Environment(torch.nn.Module):
         embedder: torch.nn.Module,
         encoder: torch.nn.Module,
         classifier: torch.nn.Module,
-        augmenter_list: List[Augmenter],
-        max_step: int
+        USE_embedder: UniversalSentenceEmbedder,
+        augmenter_list: List[Augmenter]
     ):
         super(Environment, self).__init__()
         # Module initialization
@@ -27,25 +28,39 @@ class Environment(torch.nn.Module):
         self.encoder = encoder
         self.classifier = classifier
         self.augmenter_list = augmenter_list
+        self.USE_embedder = USE_embedder
 
         # Environment Variable
         self.initial_state = None
-        self.current_state = None
-        self.safe_state = None
-        self.encoded_initial_state = None
+        self.initial_encoded_state = None
         self.initial_prediction = None
-        self.current_step = None
-        self.max_step = max_step
-        self.similarity_threshold = env_params["similarity_threshold"]
+        self.previous_state = None
+        self.previous_reward = 0
+        self.label = None
 
         # Calculation Function
-        self.cos_similarity = torch.nn.CosineSimilarity()
-        self.reinforcer_reward = JsdCrossEntropy()
+        self.lambda_multiplier = 1.2
+        self.maximize_target_func_name = env_params["maximize_target"]
+        self.loss_reward = self._get_maximize_target_func(self.maximize_target_func_name)
+        self.distance_penalty = torch.nn.MSELoss()
+        self.cos_similarity = np.inner
+        self.similarity_threshold = env_params["similarity_threshold"]
 
-    def get_current_state(
-        self
+        # Record Variable
+        self.failed_num = 0
+
+    def _get_maximize_target_func(
+        self,
+        select_func_name: str
     ):
-        return self.current_state
+        if select_func_name == "cross-entropy":
+            return torch.nn.CrossEntropyLoss()
+        elif select_func_name == "consistency":
+            return JsdCrossEntropy()
+        elif select_func_name == "ib":
+            return IBLoss()
+        else:
+            raise ValueError("Not Support Error")
 
     def get_encoded_state(
         self,
@@ -71,65 +86,99 @@ class Environment(torch.nn.Module):
 
         return encoded_state
 
+    def _get_initial_reward(
+        self,
+        initial_prediction: torch.Tensor,
+        label: torch.Tensor
+    ):
+        if self.maximize_target_func_name == "consistency":
+            return 0
+        elif self.maximize_target_func_name == "cross-entropy":
+            return self.loss_reward(initial_prediction, label)
+        elif self.maximize_target_func_name == "ib":
+            return self.loss_reward(initial_prediction, label)
+        else:
+            raise ValueError("Not surport!")
+
     def reset(
         self,
-        wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]]
+        wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]],
+        label: torch.Tensor
     ):
         self.initial_state = wrapped_token_of_sent
-        self.encoded_initial_state = self.get_encoded_state(self.initial_state)
+        self.initial_USE = self.USE_embedder(wrapped_token_of_sent)
+        self.previous_state = wrapped_token_of_sent
+        self.label = label
+        self.initial_encoded_state = self.get_encoded_state(self.initial_state)
+
         training_status = self.training
         self.eval()
         with torch.no_grad():
-            self.initial_prediction = self.classifier(self.encoded_initial_state)
+            self.initial_prediction = self.classifier(self.initial_encoded_state)
         if training_status is True:
             self.train
         else:
             pass
-        self.current_state = wrapped_token_of_sent
-        self.safe_state = wrapped_token_of_sent
-        self.current_step = 0
 
-        return self.initial_state
+        self.previous_reward = self._get_initial_reward(self.initial_prediction, self.label)
+
+        return self.previous_state
+
+    def _get_loss_reward(
+        self,
+        initial_prediction: torch.Tensor,
+        augmented_prediction: torch.Tensor,
+        label: torch.Tensor
+    ):
+        if self.maximize_target_func_name == "consistency":
+            return self.loss_reward(initial_prediction, augmented_prediction).detach().cpu().item()
+        elif self.maximize_target_func_name == "cross-entropy":
+            return self.loss_reward(augmented_prediction, label).detach().cpu().item()
+        elif self.maximize_target_func_name == "ib":
+            return self.loss_reward(augmented_prediction, label).detach().cpu().item()
+        else:
+            raise ValueError("Not surport!")
 
     def _get_env_respond(
         self,
         augmented_state: Dict[str, Dict[str, torch.Tensor]]
     ):
         done = False
-        safe = True
 
         # Get encoded augmented sentence embedding for similarity calculation preparation
         encoded_augmented_state = self.get_encoded_state(augmented_state)
 
         # Calculate Reward - Typical
-        if self.cos_similarity(self.encoded_initial_state, encoded_augmented_state) < self.similarity_threshold:
-            done = True
-            safe = False
-            reward = -0.024
-        else:
-            training_status = self.training
-            self.eval()
-            with torch.no_grad():
-                augmented_prediction = self.classifier(encoded_augmented_state)
-            if training_status is True:
-                self.train()
-            else:
-                pass
-
-            reward = self.reinforcer_reward(self.initial_prediction, augmented_prediction).detach().cpu().item()
-
-        # Penelty Reward
-        penelty_reward = 0.006 * (self.current_step / self.max_step)
-
-        # Record Step
-        self.current_step += 1
-
-        if safe is True:
-            self.safe_state = augmented_state
+        training_status = self.training
+        self.eval()
+        with torch.no_grad():
+            augmented_prediction = self.classifier(encoded_augmented_state)
+        if training_status is True:
+            self.train()
         else:
             pass
 
-        return reward - penelty_reward, done
+        loss_reward = self._get_loss_reward(self.initial_prediction, augmented_prediction, self.label)
+
+        distance_penalty = self.lambda_multiplier * self.distance_penalty(
+            self.initial_encoded_state,
+            encoded_augmented_state
+        ).detach().cpu().item()
+
+        # Similarity threshold
+        augmented_USE = self.USE_embedder(augmented_state)
+        if self.cos_similarity(self.initial_USE, augmented_USE).item() < self.similarity_threshold:
+            self.failed_num += 1
+            loss_reward = 0
+            done = True
+        else:
+            # Move to next state
+            self.previous_state = augmented_state
+
+        final_reward = loss_reward - distance_penalty - self.previous_reward
+        self.previous_reward = final_reward
+
+        return done, final_reward
 
     def step(
         self,
@@ -141,15 +190,11 @@ class Environment(torch.nn.Module):
         # Last action will be "stop"
         if action == len(self.augmenter_list) - 1:
             done = True
-            reward = 0.012
         else:
-            augmented_state = self.augmenter_list[action].augment(self.current_state)
-            reward, done = self._get_env_respond(augmented_state)
+            augmented_state = self.augmenter_list[action].augment(self.previous_state)
+            done, reward = self._get_env_respond(augmented_state)
 
-            # move to next state
-            self.current_state = augmented_state
-
-        return self.current_state, reward, done
+        return self.previous_state, reward, done
 
 
 class Policy(torch.nn.Module):
@@ -158,6 +203,7 @@ class Policy(torch.nn.Module):
         policy_params: Dict,
         embedder: torch.nn.Module,
         encoder: torch.nn.Module,
+        classifier: torch.nn.Module,
         input_dim: int,
         num_of_action: int
     ):
@@ -165,6 +211,7 @@ class Policy(torch.nn.Module):
 
         self.embedder = embedder
         self.encoder = encoder
+        self.classifier = classifier
 
         self.feedforward = FeedForward(
             input_dim,
@@ -179,6 +226,24 @@ class Policy(torch.nn.Module):
             lr=policy_params["optimizer"]["lr"]
         )
 
+        self.initial_encoded_state = None
+        self.initial_prediction = None
+
+    def reset(
+        self,
+        state: Dict[str, Dict[str, torch.Tensor]]
+    ):
+        self.initial_encoded_state = self.get_encoded_state(state)
+
+        training_status = self.training
+        self.eval()
+        with torch.no_grad():
+            self.initial_prediction = self.classifier(self.initial_encoded_state)
+        if training_status is True:
+            self.train()
+        else:
+            pass
+
     def select_action(
         self,
         state: Dict[str, Dict[str, torch.Tensor]]
@@ -187,8 +252,7 @@ class Policy(torch.nn.Module):
 
         return action, action_probs
 
-    @overrides
-    def forward(
+    def get_encoded_state(
         self,
         state: Dict[str, Dict[str, torch.Tensor]]
     ):
@@ -209,8 +273,18 @@ class Policy(torch.nn.Module):
         else:
             pass
 
+        return encoded_state
+
+    @overrides
+    def forward(
+        self,
+        state: Dict[str, Dict[str, torch.Tensor]]
+    ):
+        encoded_state = self.get_encoded_state(state)
+        real_state = torch.cat((self.initial_prediction, encoded_state), 1)
+
         # Get action probs
-        action_scores = self.feedforward(encoded_state.detach())
+        action_scores = self.feedforward(real_state.detach())
         action_probs = torch.nn.functional.softmax(action_scores, dim=1)
 
         # Get action
@@ -242,7 +316,8 @@ class REINFORCER(torch.nn.Module):
             policy_params,
             embedder,
             encoder,
-            encoder.get_output_dim(),
+            classifier,
+            encoder.get_output_dim() + classifier.get_output_dim(),
             len(augmenter_list)
         )
         self.env = Environment(
@@ -250,8 +325,8 @@ class REINFORCER(torch.nn.Module):
             embedder,
             encoder,
             classifier,
-            augmenter_list,
-            REINFORCE_params["max_step"],
+            UniversalSentenceEmbedder(dataset_dict["dataset_reader"].transformer_tokenizer),
+            augmenter_list
         )
 
         self.dataset_vocab = dataset_dict["dataset_vocab"]
@@ -347,9 +422,10 @@ class REINFORCER(torch.nn.Module):
 
     def augment(
         self,
-        wrapped_token_of_sent: Dict[str, Dict[str, torch.Tensor]]
+        episode
     ):
-        state = self.env.reset(wrapped_token_of_sent)
+        state = self.env.reset(episode["text"], episode["label"])
+        self.policy.reset(episode["text"])
         log_probs = []
         rewards = []
         actions = []
@@ -367,7 +443,7 @@ class REINFORCER(torch.nn.Module):
 
         return get_sentence_from_text_field_tensors(
             self.transformer_tokenizer,
-            self.env.safe_state
+            self.env.previous_state
         )
 
     @overrides
@@ -381,8 +457,10 @@ class REINFORCER(torch.nn.Module):
         output_dict = {}
 
         wrapped_token_of_sent = episode["text"]
+        label = episode["label"]
 
-        state = self.env.reset(wrapped_token_of_sent)
+        state = self.env.reset(wrapped_token_of_sent, label)
+        self.policy.reset(wrapped_token_of_sent)
         log_probs = []
         rewards = []
         actions = []
@@ -408,7 +486,7 @@ class REINFORCER(torch.nn.Module):
         )
         output_dict["augment_sentence"] = get_sentence_from_text_field_tensors(
             self.transformer_tokenizer,
-            self.env.safe_state
+            self.env.previous_state
         )
         output_dict["actions"] = actions
         output_dict["loss"] = loss

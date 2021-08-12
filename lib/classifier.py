@@ -32,6 +32,8 @@ class TextClassifier(torch.nn.Module):
             [final_linear]
         )
 
+        self.output_size = output_size
+
     @overrides
     def forward(
         self,
@@ -45,7 +47,7 @@ class TextClassifier(torch.nn.Module):
     def get_output_dim(
         self
     ) -> int:
-        return self.classifiers[-1].get_output_dim()
+        return self.output_size
 
 
 def main():

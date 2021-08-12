@@ -105,12 +105,14 @@ class ReinforceTrainer(Trainer):
             # batch updating
             if (episode_idx+1) % batch_size == 0:
                 # Record
-                print(self.record_step)
-                print(output_dict["origin_sentence"])
-                print(output_dict["augment_sentence"])
-                print(output_dict["actions"])
-                print(output_dict["ep_reward"])
-                print(dict(Counter(batch_output_dict["total_actions"])))
+                print("Record Step        : {}".format(self.record_step))
+                print("Original Sentence  : {}".format(output_dict["origin_sentence"]))
+                print("Augmented Sentence : {}".format(output_dict["augment_sentence"]))
+                print("Actions            : {}".format(output_dict["actions"]))
+                print("Episode Reward     : {:.5f}".format(output_dict["ep_reward"]))
+                print("Action Distribution: {}".format(dict(Counter(batch_output_dict["total_actions"]))))
+                print("Faield Ratio       : {:.5f}".format(self.train_model.env.failed_num / batch_size))
+                self.train_model.env.failed_num = 0
 
                 if self.writer is None:
                     pass
@@ -121,7 +123,7 @@ class ReinforceTrainer(Trainer):
 
                 # Optimize
                 self.train_model.optimize(batch_output_dict["loss"] / batch_size)
-                print(batch_output_dict["reward"] / batch_size)
+                print("Average Reward     : {:.5f}".format(batch_output_dict["reward"] / batch_size))
 
                 # Initialize
                 batch_output_dict = {
@@ -134,7 +136,8 @@ class ReinforceTrainer(Trainer):
                 }
 
                 # Save
-                if self.is_save is True:
+                if self.is_save is True and (episode_idx + 1) % (batch_size*5) == 0:
+                    print("Saving ..." + "model_record/reinforce_model_weights/policy" + str(self.record_step) + ".pkl")
                     torch.save(
                         self.train_model.policy.state_dict(),
                         "model_record/reinforce_model_weights/policy" + str(self.record_step) + ".pkl"
@@ -162,9 +165,10 @@ class TextTrainer(Trainer):
         self.is_save = text_trainer_params["is_save"]
         self.accumulated_step = text_trainer_params["accumulated_step"]
 
-        self.augment_loss_multiplier = 0.6
-        self.consistency_loss_multiplier = 0
-        self.contrastive_loss_multiplier = 0.3
+        self.augment_loss_multiplier = 0.9
+        self.consistency_loss_multiplier = 12
+        self.contrastive_loss_multiplier = 0.9
+        self.entropy_loss_multiplier = 0.9
 
         self.GPU = next(train_model.parameters()).get_device()
 
@@ -208,6 +212,8 @@ class TextTrainer(Trainer):
         total_origin_loss = 0.0
         total_augment_loss = 0.0
         total_consistency_loss = 0.0
+        total_sc_loss = 0.0
+        total_entropy_loss = 0.0
         total_labels = []
         total_predicts = []
 
@@ -225,12 +231,14 @@ class TextTrainer(Trainer):
             # Optimize
             if is_finetune is False:
                 batch_loss = output_dict["classification_loss"]
-                total_origin_loss += output_dict["classification_loss"]
+                total_origin_loss += output_dict["classification_loss"].item()
             else:
-                batch_loss = output_dict["origin_classification_loss"] + self.augment_loss_multiplier * output_dict["total_augment_loss"] + self.consistency_loss_multiplier * output_dict["total_consistency_loss"]  # noqa
-                total_origin_loss += output_dict["origin_classification_loss"]
-                total_augment_loss += output_dict["total_augment_loss"]
-                total_consistency_loss += output_dict["total_consistency_loss"]
+                batch_loss = output_dict["origin_classification_loss"] + self.augment_loss_multiplier * output_dict["total_augment_loss"] + self.consistency_loss_multiplier * output_dict["total_consistency_loss"] + self.contrastive_loss_multiplier * output_dict["total_sc_loss"] + self.entropy_loss_multiplier * output_dict["total_entropy_loss"]# noqa
+                total_origin_loss += output_dict["origin_classification_loss"].item()
+                total_augment_loss += output_dict["total_augment_loss"].item()
+                total_consistency_loss += output_dict["total_consistency_loss"].item()
+                total_sc_loss += output_dict["total_sc_loss"].item()
+                total_entropy_loss += output_dict["total_entropy_loss"].item()
 
             # Accumulated
             if (batch_idx+1) % self.accumulated_step == 0:
@@ -260,12 +268,16 @@ class TextTrainer(Trainer):
         avg_origin_loss = total_origin_loss / num_of_batch
         avg_augment_loss = total_augment_loss / num_of_batch
         avg_consistency_loss = total_consistency_loss / num_of_batch
+        avg_sc_loss = total_sc_loss / num_of_batch
+        avg_entropy_loss = total_entropy_loss / num_of_batch
         avg_acc = torch.true_divide(torch.sum(total_labels == total_predicts), total_labels.shape[0])
 
         loss_dict = {
             "avg_loss": avg_loss,
             "avg_origin_loss": avg_origin_loss,
             "avg_augment_loss": avg_augment_loss,
+            "avg_sc_loss": avg_sc_loss,
+            "avg_entropy_loss": avg_entropy_loss,
             "avg_consistency_loss": avg_consistency_loss
         }
 
@@ -312,6 +324,8 @@ class TextTrainer(Trainer):
             print("Training Origin Loss     : {:.5f}".format(loss_dict["avg_origin_loss"]))
             print("Training Augment Loss    : {:.5f}".format(loss_dict["avg_augment_loss"]))
             print("Training Consistency Loss: {:.5f}".format(loss_dict["avg_consistency_loss"]))
+            print("Training SC Loss         : {:.5f}".format(loss_dict["avg_sc_loss"]))
+            print("Training Entropy Loss    : {:.5f}".format(loss_dict["avg_entropy_loss"]))
             print("Training Acc             : {:.5f}".format(train_avg_acc))
             print("Validation Loss          : {:.5f}".format(valid_avg_loss))
             print("Validation Acc           : {:.5f}".format(valid_avg_acc))

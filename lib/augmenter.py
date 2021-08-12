@@ -167,7 +167,20 @@ class SwapAugmenter(Augmenter):
             # Sample swap index
             select_idxs = random.sample(range(len(tokens)), max(int(len(tokens) * self.magnitude), 2))
             swap_idxs = copy.deepcopy(select_idxs)
-            random.shuffle(select_idxs)
+
+            # Dearangement
+            while True:
+                safe = True
+                for i, j in zip(select_idxs, swap_idxs):
+                    if i == j:
+                        safe = False
+                        random.shuffle(swap_idxs)
+                        break
+                    else:
+                        pass
+                if safe:
+                    break
+
             swap_tokens = [copy.deepcopy(tokens[x]) for x in swap_idxs]
 
             for idx, (select_idx, swap_idx) in enumerate(zip(select_idxs, swap_idxs)):
@@ -306,16 +319,22 @@ class InsertAugmenter(ReplaceAugmenter):
             max(int(len(availiable_token_idxs) * self.magnitude), 1)
         )
 
+        new_tokens = copy.deepcopy(tokens)
+
         for replace_idx in replace_idxs:
             replace_synonym = availiable_synonyms[replace_idx]
+            insert_idx = random.sample(
+                range(len(new_tokens)),
+                1
+            )[0]
 
             for synonym_token_idx, synonym_token in enumerate(replace_synonym):
-                tokens.insert(
-                    availiable_token_idxs[replace_idx] + synonym_token_idx,
+                new_tokens.insert(
+                    insert_idx + synonym_token_idx,
                     synonym_token
                 )
 
-        return tokens
+        return new_tokens
 
 
 class MtTransformers(object):

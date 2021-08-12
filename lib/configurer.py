@@ -206,10 +206,10 @@ def set_and_get_reinforcer(
     )
 
     # BackTrans
-    backtrans_augmenter = BackTransAugmenter(
-        reinforcer_params["augmenter"]["backtrans_augmenter"],
-        dataset_dict
-    )
+    # backtrans_augmenter = BackTransAugmenter(
+    #     reinforcer_params["augmenter"]["backtrans_augmenter"],
+    #     dataset_dict
+    # )
 
     # Identity
     identity_augmenter = IdentityAugmenter()
@@ -219,7 +219,7 @@ def set_and_get_reinforcer(
         swap_augmenter,
         replace_augmenter,
         insert_augmenter,
-        backtrans_augmenter
+        # backtrans_augmenter
     ]
 
     # Get selected augmenters
@@ -369,6 +369,8 @@ def set_and_save_augmented_texts(
                     n
                 )
             ]
+
+            reinforcer.env.USE_embedder = None
 
             with pool as p:
                 p.starmap(

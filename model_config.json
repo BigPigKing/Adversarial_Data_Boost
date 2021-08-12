@@ -11,7 +11,7 @@
             "use_subtrees": false,
             "proportion": 1,
             "max_length": 500,
-            "noise_datapath": "none"
+            "noise_datapath": "/home/god/lab/Adversarial_Data_Boost/data/syntatic_data/sst/noise/random/eda_stack_0.2_5_0"
         },
         "sentiment": {
             "datapath": "data/cr/CR.pkl",
@@ -39,12 +39,12 @@
         },
         "optimizer": {
             "select_optimizer": "adamw",
-            "lr": 1e-5
+            "lr": 1e-6
         },
         "scheduler": {
             "select_scheduler": "reduce",
-            "training_steps": 3204,
-            "warmup_steps": 192
+            "training_steps": 1600,
+            "warmup_steps": 96
         },
         "criterions": {
             "classification_criterion": "cross_entropy",
@@ -60,7 +60,8 @@
 
     "reinforcer": {
         "environment": {
-            "similarity_threshold": 0.9
+            "similarity_threshold": 0.9,
+            "maximize_target": "ib"
         },
 
         "augmenter": {
@@ -69,23 +70,15 @@
             },
             "select_augmenter": [0, 1, 2, 3],
             "delete_augmenter": {
-                "padded_idx": 0,
-                "oov_idx": 24,
                 "magnitude": 0.1
             },
             "swap_augmenter": {
-                "padded_idx": 0,
-                "oov_idx": 1,
-                "magnitude": 1
+                "magnitude": 0.1
             },
             "replace_augmenter": {
-                "padded_idx": 0,
-                "oov_idx": 1,
                 "magnitude": 0.1
             },
             "insert_augmenter": {
-                "padded_idx": 0,
-                "oov_idx": 1,
                 "magnitude": 0.1
             },
             "backtrans_augmenter": {
@@ -98,8 +91,8 @@
 
         "policy": {
             "feedforward": {
-                "num_layers": 4,
-                "hidden_dims": [64, 32, 16],
+                "num_layers": 3,
+                "hidden_dims": [384, 96],
                 "activations": "relu",
                 "dropout": 0.2
             },
@@ -111,9 +104,9 @@
         },
 
         "REINFORCE": {
-            "gamma": 0.99,
-            "clip_grad": 10,
-            "max_step": 20
+            "gamma": 0.90,
+            "clip_grad": 3,
+            "max_step": 6
         }
     },
 
@@ -151,7 +144,7 @@
     },
 
     "train_mode": {
-        "select_mode": 0,
+        "select_mode": 1,
         "0": {
             "text_trainer": {
                 "dataloader": {
@@ -161,8 +154,8 @@
                     "shuffle": true
                 },
                 "accumulated_step": 1,
-                "epochs": 12,
-                "is_save": true
+                "epochs": 6,
+                "is_save": false
             },
             "reinforce_trainer": {
                 "dataloader": {
@@ -174,51 +167,39 @@
                 "batch_size": 120
             },
             "augmented_instance_generator": {
-                "num_processor": 3,
-                "select_mode": "eda",
+                "num_processor": 5,
+                "select_mode": "default",
                 "select_policy": [
-                    "model_record/reinforce_model_weights/policy11",
-                    "model_record/reinforce_model_weights/policy21",
-                    "model_record/reinforce_model_weights/policy31",
-                    "model_record/reinforce_model_weights/policy12",
-                    "model_record/reinforce_model_weights/policy22",
-                    "model_record/reinforce_model_weights/policy32",
-                    "model_record/reinforce_model_weights/policy13",
-                    "model_record/reinforce_model_weights/policy23",
-                    "model_record/reinforce_model_weights/policy33"
+                    "model_record/reinforce_model_weights/policy30",
+                    "model_record/reinforce_model_weights/policy40",
+                    "model_record/reinforce_model_weights/policy50",
+                    "model_record/reinforce_model_weights/policy60",
+                    "model_record/reinforce_model_weights/policy70"
                 ],
                 "save_name": [
-                    "model_record/augments/augment11",
-                    "model_record/augments/augment21",
-                    "model_record/augments/augment31",
-                    "model_record/augments/augment12",
-                    "model_record/augments/augment22",
-                    "model_record/augments/augment32",
-                    "model_record/augments/augment13",
-                    "model_record/augments/augment23",
-                    "model_record/augments/augment33"
+                    "model_record/augments/augment30",
+                    "model_record/augments/augment40",
+                    "model_record/augments/augment50",
+                    "model_record/augments/augment60",
+                    "model_record/augments/augment70"
                 ]
             },
             "text_finetuner": {
                 "dataloader": {
-                    "train_batch_size": 9,
+                    "train_batch_size": 16,
                     "valid_batch_size": 66,
                     "test_batch_size": 66,
                     "shuffle": true
                 },
                 "accumulated_step": 30,
-                "epochs": 36,
+                "epochs": 2,
                 "is_save": false,
                 "augmented_instance": [
-                    "model_record/augments/augment11",
-                    "model_record/augments/augment21",
-                    "model_record/augments/augment31",
-                    "model_record/augments/augment12",
-                    "model_record/augments/augment22",
-                    "model_record/augments/augment32",
-                    "model_record/augments/augment13",
-                    "model_record/augments/augment23",
-                    "model_record/augments/augment33"
+                    "model_record/augments/augment30",
+                    "model_record/augments/augment40",
+                    "model_record/augments/augment50",
+                    "model_record/augments/augment60",
+                    "model_record/augments/augment70"
                 ]
             }
         },
@@ -232,57 +213,45 @@
                 "dataloader": {
                     "shuffle": true
                 },
-                "epochs": 3,
+                "epochs": 1,
                 "is_save": true,
                 "is_writer": true,
-                "batch_size": 60
+                "batch_size": 120
             },
             "augmented_instance_generator": {
-                "num_processor": 1,
+                "num_processor": 5,
                 "select_mode": "default",
                 "select_policy": [
-                    "model_record/reinforce_model_weights/policy11",
-                    "model_record/reinforce_model_weights/policy21",
-                    "model_record/reinforce_model_weights/policy31",
-                    "model_record/reinforce_model_weights/policy12",
-                    "model_record/reinforce_model_weights/policy22",
-                    "model_record/reinforce_model_weights/policy32",
-                    "model_record/reinforce_model_weights/policy13",
-                    "model_record/reinforce_model_weights/policy23",
-                    "model_record/reinforce_model_weights/policy33"
+                    "model_record/reinforce_model_weights/policy30",
+                    "model_record/reinforce_model_weights/policy40",
+                    "model_record/reinforce_model_weights/policy50",
+                    "model_record/reinforce_model_weights/policy60",
+                    "model_record/reinforce_model_weights/policy70"
                 ],
                 "save_name": [
-                    "model_record/augments/augment11",
-                    "model_record/augments/augment21",
-                    "model_record/augments/augment31",
-                    "model_record/augments/augment12",
-                    "model_record/augments/augment22",
-                    "model_record/augments/augment32",
-                    "model_record/augments/augment13",
-                    "model_record/augments/augment23",
-                    "model_record/augments/augment33"
+                    "model_record/augments/augment30",
+                    "model_record/augments/augment40",
+                    "model_record/augments/augment50",
+                    "model_record/augments/augment60",
+                    "model_record/augments/augment70"
                 ]
             },
             "text_finetuner": {
                 "dataloader": {
-                    "train_batch_size": 9,
+                    "train_batch_size": 16,
                     "valid_batch_size": 66,
                     "test_batch_size": 66,
                     "shuffle": true
                 },
-                "accumulated_step": 30,
-                "epochs": 24,
-                "is_save": false,
+                "accumulated_step": 2,
+                "epochs": 6,
+                "is_save": true,
                 "augmented_instance": [
-                    "model_record/augments/augment11",
-                    "model_record/augments/augment21",
-                    "model_record/augments/augment31",
-                    "model_record/augments/augment12",
-                    "model_record/augments/augment22",
-                    "model_record/augments/augment32",
-                    "model_record/augments/augment13",
-                    "model_record/augments/augment23",
-                    "model_record/augments/augment33"
+                    "model_record/augments/augment30",
+                    "model_record/augments/augment40",
+                    "model_record/augments/augment50",
+                    "model_record/augments/augment60",
+                    "model_record/augments/augment70"
                 ]
             }
         },
@@ -293,27 +262,39 @@
                 "classifier": "model_record/text_model_weights/classifier.pkl"
             },
             "augmented_instance_generator": {
-                "num_processor": 1,
-                "select_mode": "backtrans",
+                "num_processor": 5,
+                "select_mode": "default",
                 "select_policy": [
-                    "model_record/reinforce_model_weights/policy3"
+                    "model_record/reinforce_model_weights/policy20",
+                    "model_record/reinforce_model_weights/policy30",
+                    "model_record/reinforce_model_weights/policy40",
+                    "model_record/reinforce_model_weights/policy50",
+                    "model_record/reinforce_model_weights/policy60"
                 ],
                 "save_name": [
-                    "model_record/augments/augment3"
+                    "model_record/augments/augment20",
+                    "model_record/augments/augment30",
+                    "model_record/augments/augment40",
+                    "model_record/augments/augment50",
+                    "model_record/augments/augment60"
                 ]
             },
             "text_finetuner": {
                 "dataloader": {
-                    "train_batch_size": 9,
+                    "train_batch_size": 16,
                     "valid_batch_size": 66,
                     "test_batch_size": 66,
                     "shuffle": true
                 },
-                "accumulated_step": 30,
-                "epochs": 1200,
+                "accumulated_step": 2,
+                "epochs": 6,
                 "is_save": false,
                 "augmented_instance": [
-                    "model_record/augments/augment1"
+                    "model_record/augments/augment20",
+                    "model_record/augments/augment30",
+                    "model_record/augments/augment40",
+                    "model_record/augments/augment50",
+                    "model_record/augments/augment60"
                 ]
             }
         },
@@ -325,16 +306,20 @@
             },
             "text_finetuner": {
                 "dataloader": {
-                    "train_batch_size": 32,
+                    "train_batch_size": 16,
                     "valid_batch_size": 60,
                     "test_batch_size": 60,
                     "shuffle": true
                 },
-                "accumulated_step": 1,
-                "epochs": 12,
-                "is_save": false,
+                "accumulated_step": 2,
+                "epochs": 6,
+                "is_save": true,
                 "augmented_instance": [
-                    "model_record/augments/augment3"
+                    "model_record/augments/augment30",
+                    "model_record/augments/augment40",
+                    "model_record/augments/augment50",
+                    "model_record/augments/augment60",
+                    "model_record/augments/augment70"
                 ]
             }
         },
@@ -349,12 +334,9 @@
                 },
                 "accumulated_step": 2,
                 "epochs": 12,
-                "is_save": true,
+                "is_save": false,
                 "augmented_instance": [
-                    "data/syntatic_data/sst/eda/mag_0.1_0",
-                    "data/syntatic_data/sst/eda/mag_0.1_1",
-                    "data/syntatic_data/sst/eda/mag_0.1_2",
-                    "data/syntatic_data/sst/eda/mag_0.1_3"
+                    "model_record/augments/augment624"
                 ]
             }
         },
@@ -373,50 +355,18 @@
                     "is_sim_comparison": false,
                     "comparison_dict": {
                         "sim_0.7": [
-                            "sim_0.7/augments/augment11",
-                            "sim_0.7/augments/augment12",
-                            "sim_0.7/augments/augment13",
-                            "sim_0.7/augments/augment21",
-                            "sim_0.7/augments/augment22",
-                            "sim_0.7/augments/augment23",
-                            "sim_0.7/augments/augment31",
-                            "sim_0.7/augments/augment32",
-                            "sim_0.7/augments/augment33"
+                            "sim_0.7/augments/augment11"
                         ],
                         "sim_0.8": [
-                            "sim_0.8/augments/augment11",
-                            "sim_0.8/augments/augment12",
-                            "sim_0.8/augments/augment13",
-                            "sim_0.8/augments/augment21",
-                            "sim_0.8/augments/augment22",
-                            "sim_0.8/augments/augment23",
-                            "sim_0.8/augments/augment31",
-                            "sim_0.8/augments/augment32",
-                            "sim_0.8/augments/augment33"
+                            "sim_0.8/augments/augment11"
                         ],
                         "sim_0.9": [
-                            "sim_0.9/augments/augment11",
-                            "sim_0.9/augments/augment12",
-                            "sim_0.9/augments/augment13",
-                            "sim_0.9/augments/augment21",
-                            "sim_0.9/augments/augment22",
-                            "sim_0.9/augments/augment23",
-                            "sim_0.9/augments/augment31",
-                            "sim_0.9/augments/augment32",
-                            "sim_0.9/augments/augment33"
+                            "sim_0.9/augments/augment11"
                         ]
                     }
                 },
                 "augmented_instance": [
-                    "model_record/augments/augment11",
-                    "model_record/augments/augment12",
-                    "model_record/augments/augment13",
-                    "model_record/augments/augment21",
-                    "model_record/augments/augment22",
-                    "model_record/augments/augment23",
-                    "model_record/augments/augment31",
-                    "model_record/augments/augment32",
-                    "model_record/augments/augment33"
+                    "model_record/augments/augment11"
                 ]
             }
         },
@@ -442,16 +392,16 @@
 
             "text_finetuner": {
                 "dataloader": {
-                    "train_batch_size": 32,
+                    "train_batch_size": 16,
                     "valid_batch_size": 300,
                     "test_batch_size": 300,
                     "shuffle": true
                 },
-                "accumulated_step": 1,
+                "accumulated_step": 2,
                 "epochs": 12,
                 "is_save": false,
                 "augmented_instance": [
-                    "model_record/augments/augment3"
+                    "/home/god/lab/Adversarial_Data_Boost/data/syntatic_data/sst/noise/random/mag_0.1_0"
                 ]
             }
         }
