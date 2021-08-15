@@ -1,5 +1,6 @@
 import abc
 import torch
+import numpy as np
 
 from tqdm import tqdm
 from typing import Dict
@@ -112,7 +113,10 @@ class ReinforceTrainer(Trainer):
                 print("Episode Reward     : {:.5f}".format(output_dict["ep_reward"]))
                 print("Action Distribution: {}".format(dict(Counter(batch_output_dict["total_actions"]))))
                 print("Faield Ratio       : {:.5f}".format(self.train_model.env.failed_num / batch_size))
+                print("Sim               : {}".format(np.array(self.train_model.env.sim) / np.array(self.train_model.env.sim_action)))
                 self.train_model.env.failed_num = 0
+                self.train_model.env.sim = [0, 0, 0, 0]
+                self.train_model.env.sim_action = [0, 0, 0, 0]
 
                 if self.writer is None:
                     pass
@@ -302,7 +306,8 @@ class TextTrainer(Trainer):
         is_finetune: bool,
         train_data_loader: torch.utils.data.DataLoader,
         valid_data_loader: torch.utils.data.DataLoader,
-        test_data_loader: torch.utils.data.DataLoader = None
+        test_data_loader: torch.utils.data.DataLoader = None,
+        noisy_data_loader: torch.utils.data.DataLoader = None
     ):
         for epoch in tqdm(range(epochs)):
             # Do training
@@ -319,6 +324,20 @@ class TextTrainer(Trainer):
             with torch.no_grad():
                 test_avg_loss, test_avg_acc = self._fit_valid(test_data_loader)
 
+            # Do noisy
+            self.train_model.eval()
+            if noisy_data_loader is None:
+                noisy_avg_losses = [0]
+                noisy_avg_accs = [0]
+            else:
+                noisy_avg_losses = []
+                noisy_avg_accs = []
+                for noisy_dl in noisy_data_loader:
+                    with torch.no_grad():
+                        noisy_avg_loss, noisy_avg_acc = self._fit_valid(noisy_dl)
+                        noisy_avg_losses.append(noisy_avg_loss)
+                        noisy_avg_accs.append(noisy_avg_acc)
+
             print("Epochs                   : {}".format(epoch))
             print("Training Total Loss      : {:.5f}".format(loss_dict["avg_loss"]))
             print("Training Origin Loss     : {:.5f}".format(loss_dict["avg_origin_loss"]))
@@ -331,6 +350,11 @@ class TextTrainer(Trainer):
             print("Validation Acc           : {:.5f}".format(valid_avg_acc))
             print("Testing Loss             : {:.5f}".format(test_avg_loss))
             print("Testing Acc              : {:.5f}".format(test_avg_acc))
+            for noisy_avg_loss, noisy_avg_acc in zip(noisy_avg_losses, noisy_avg_accs):
+                print("Noisy Loss               : {:.5f}".format(noisy_avg_loss))
+                print("Noisy Acc                : {:.5f}".format(noisy_avg_acc))
+            print("Avg Noisy Loss           : {:.5f}".format(sum(noisy_avg_losses) / len(noisy_avg_losses)))
+            print("Avg Noisy Acc            : {:.5f}".format(sum(noisy_avg_accs) / len(noisy_avg_accs)))
             print("----------------------------------------------")
 
         if self.is_save is True:

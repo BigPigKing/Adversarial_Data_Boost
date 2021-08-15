@@ -28,11 +28,12 @@ def train_text_model(
     )
 
     # Get Text DataLoader
-    train_dataloader, valid_dataloader, test_dataloader = set_and_get_text_dataloader(
+    train_dataloader, valid_dataloader, test_dataloader, noisy_dataloader = set_and_get_text_dataloader(
         mode_params["text_trainer"]["dataloader"],
         train_ds=dataset_dict["train_ds"],
         valid_ds=dataset_dict["valid_ds"],
-        test_ds=dataset_dict["test_ds"]
+        test_ds=dataset_dict["test_ds"],
+        noisy_ds=dataset_dict["noisy_ds"]
     )
 
     # Train Text Model
@@ -41,7 +42,8 @@ def train_text_model(
         False,
         train_dataloader,
         valid_dataloader,
-        test_dataloader
+        test_dataloader,
+        noisy_dataloader
     )
 
 
@@ -103,11 +105,12 @@ def finetune_text_model(
     )
 
     # Get Text DataLoader
-    train_dataloader, valid_dataloader, test_dataloader = set_and_get_text_dataloader(
+    train_dataloader, valid_dataloader, test_dataloader, noisy_dataloader = set_and_get_text_dataloader(
         mode_params["text_finetuner"]["dataloader"],
         train_ds=dataset_dict["train_ds"],
         valid_ds=dataset_dict["valid_ds"],
-        test_ds=dataset_dict["test_ds"]
+        test_ds=dataset_dict["test_ds"],
+        noisy_ds=dataset_dict["noisy_ds"]
     )
 
     # Train Text Model
@@ -120,7 +123,8 @@ def finetune_text_model(
         True,
         train_dataloader,
         valid_dataloader,
-        test_dataloader
+        test_dataloader,
+        noisy_dataloader
     )
 
 

@@ -2,6 +2,7 @@ import torch
 import tensorflow_hub as hub
 
 from typing import Dict
+from sentence_transformers import SentenceTransformer
 # from .utils import get_sentence_from_text_field_tensors
 from allennlp.modules.text_field_embedders import BasicTextFieldEmbedder
 
@@ -21,6 +22,28 @@ class TextEmbedder(BasicTextFieldEmbedder):
     def __init__(self,
                  token_embedders: Dict):
         super(TextEmbedder, self).__init__(token_embedders)
+
+
+class SentenceEmbedder(object):
+    def __init__(
+        self,
+        tokenizer,
+        model_url: str = "sentence-transformers/distilbert-base-nli-stsb-mean-tokens"
+    ):
+        super(SentenceEmbedder, self).__init__()
+        self.tokenizer = tokenizer
+        self.model = SentenceTransformer(model_url, device="cpu")
+
+    def __call__(
+        self,
+        state: Dict[str, Dict[str, torch.Tensor]]
+    ):
+        input_str = get_sentence_from_text_field_tensors(
+            self.tokenizer,
+            state
+        )
+
+        return self.model.encode([input_str], convert_to_tensor=True)
 
 
 class UniversalSentenceEmbedder(object):

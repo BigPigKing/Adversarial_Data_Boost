@@ -50,7 +50,7 @@ def set_and_get_dataset(
             "dataset_reader": dataset_reader
         }
     elif dataset_params["select_dataset"] == "sentiment":
-        train_ds, valid_ds, test_ds, dataset_reader = get_sentimenmt_ds(
+        train_ds, valid_ds, test_ds, noisy_ds, dataset_reader = get_sentimenmt_ds(
             dataset_params["sentiment"]
         )
 
@@ -58,6 +58,7 @@ def set_and_get_dataset(
             "train_ds": train_ds,
             "valid_ds": valid_ds,
             "test_ds": test_ds,
+            "noisy_ds": noisy_ds,
             "dataset_reader": dataset_reader
         }
 
@@ -75,6 +76,8 @@ def set_dataset_vocab(
     dataset_dict["train_ds"].index_with(dataset_vocab)
     dataset_dict["valid_ds"].index_with(dataset_vocab)
     dataset_dict["test_ds"].index_with(dataset_vocab)
+    for noisy_ds in dataset_dict["noisy_ds"]:
+        noisy_ds.index_with(dataset_vocab)
     dataset_dict["dataset_vocab"] = dataset_vocab
 
 
@@ -263,7 +266,8 @@ def set_and_get_text_dataloader(
     dataloader_params: Dict,
     train_ds: AllennlpDataset,
     valid_ds: AllennlpDataset,
-    test_ds: AllennlpDataset
+    test_ds: AllennlpDataset,
+    noisy_ds: AllennlpDataset
 ):
     train_data_loader = DataLoader(
         train_ds,
@@ -284,7 +288,18 @@ def set_and_get_text_dataloader(
         collate_fn=allennlp_collate
     )
 
-    return train_data_loader, valid_data_loader, test_data_loader
+    if noisy_ds is None:
+        noisy_data_loader = None
+    else:
+        noisy_data_loader = []
+        for ds in noisy_ds:
+            noisy_data_loader.append(DataLoader(
+                ds,
+                batch_size=dataloader_params["test_batch_size"],
+                collate_fn=allennlp_collate
+            ))
+
+    return train_data_loader, valid_data_loader, test_data_loader, noisy_data_loader
 
 
 def set_and_get_reinforce_dataloader(
@@ -370,7 +385,7 @@ def set_and_save_augmented_texts(
                 )
             ]
 
-            reinforcer.env.USE_embedder = None
+            # reinforcer.env.USE_embedder = None
 
             with pool as p:
                 p.starmap(

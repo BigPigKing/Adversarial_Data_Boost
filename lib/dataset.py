@@ -1,4 +1,5 @@
 import logging
+import math
 import pandas as pd
 
 from sklearn.model_selection import train_test_split
@@ -44,13 +45,17 @@ class SentimentDatasetReader(DatasetReader):
 
     @overrides
     def _read(self, file_path):
-        corpus = pd.read_pickle(
+        corpus = pd.read_csv(
             file_path
         )
         reviews, labels = list(corpus.sentence), list(corpus.label)
 
         for review, label in zip(reviews, labels):
-            instance = self.text_to_instance(review, label)
+            if type(review) != str:
+                if math.isnan(review):
+                    review = "."
+
+            instance = self.text_to_instance(review, str(label))
 
             if instance is not None:
                 yield instance
@@ -155,6 +160,9 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
 
     @overrides
     def _read(self, file_path):
+        sentences = []
+        labels = []
+
         with open(cached_path(file_path), "r") as data_file:
             logger.info("Reading instances from lines in file at: %s", file_path)
             for idx, line in enumerate(data_file.readlines()):
@@ -180,8 +188,15 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                         text,
                         parsed_line.label()
                     )
+
+                    sentences.append(text)
+                    labels.append(parsed_line.label())
+
                     if instance is not None:
                         yield instance
+
+        input_df = pd.DataFrame({"sentence": sentences, "label": labels}, dtype=object)
+        input_df.to_csv(file_path+".csv", index=False)
 
     @overrides
     def text_to_instance(
@@ -275,22 +290,48 @@ def split_dataset(
 def get_sentimenmt_ds(
     dataset_params: Dict
 ):
-    split_dataset(
-        dataset_params["datapath"]
-    )
+    # split_dataset(
+    #     dataset_params["datapath"]
+    # )
+
     sentiment_dataset_reader = SentimentDatasetReader(dataset_params)
 
     train_ds = sentiment_dataset_reader.read(
-        dataset_params["datapath"] + "train"
+        dataset_params["datapath"] + "_train.csv"
     )
     valid_ds = sentiment_dataset_reader.read(
-        dataset_params["datapath"] + "valid"
+        dataset_params["datapath"] + "_valid.csv"
     )
     test_ds = sentiment_dataset_reader.read(
-        dataset_params["datapath"] + "test"
+        dataset_params["datapath"] + "_test.csv"
     )
 
-    return train_ds, valid_ds, test_ds, sentiment_dataset_reader
+    if dataset_params["noisy_datapath"] == "none":
+        noisy_ds = None
+    elif dataset_params["noisy_datapath"] == "all":
+        stack_ds = sentiment_dataset_reader.read(
+            dataset_params["datapath"] + "_stack_eda.csv"
+        )
+        eda_ds = sentiment_dataset_reader.read(
+            dataset_params["datapath"] + "_eda.csv"
+        )
+        embedding_ds = sentiment_dataset_reader.read(
+            dataset_params["datapath"] + "_embedding.csv"
+        )
+        clare_ds = sentiment_dataset_reader.read(
+            dataset_params["datapath"] + "_clare.csv"
+        )
+        check_ds = sentiment_dataset_reader.read(
+            dataset_params["datapath"] + "_checklist.csv"
+        )
+        noisy_ds = [stack_ds, eda_ds, embedding_ds, clare_ds, check_ds]
+
+    else:
+        noisy_ds = [sentiment_dataset_reader.read(
+            dataset_params["noisy_datapath"]
+        )]
+
+    return train_ds, valid_ds, test_ds, noisy_ds, sentiment_dataset_reader
 
 
 def main():
