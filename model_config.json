@@ -14,7 +14,7 @@
             "noise_datapath": "none"
         },
         "sentiment": {
-            "datapath": "data/sst/sst_5/SST",
+            "datapath": "data/sst/sst_2/SST",
             "noisy_datapath": "all",
             "transformer_model_name": "roberta-base",
             "max_length": 500
@@ -44,8 +44,8 @@
         },
         "scheduler": {
             "select_scheduler": "reduce",
-            "training_steps": 1600,
-            "warmup_steps": 96
+            "training_steps": 1260,
+            "warmup_steps": 75
         },
         "criterions": {
             "classification_criterion": "cross_entropy",
