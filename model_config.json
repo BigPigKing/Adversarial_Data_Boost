@@ -14,7 +14,7 @@
             "noise_datapath": "none"
         },
         "sentiment": {
-            "datapath": "data/sst/sst_2/SST",
+            "datapath": "data/mpqa/MPQA",
             "noisy_datapath": "all",
             "transformer_model_name": "roberta-base",
             "max_length": 500
