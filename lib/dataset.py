@@ -324,7 +324,22 @@ def get_sentimenmt_ds(
         check_ds = sentiment_dataset_reader.read(
             dataset_params["datapath"] + "_checklist.csv"
         )
-        noisy_ds = [stack_ds, eda_ds, embedding_ds, clare_ds, check_ds]
+        char_ds = sentiment_dataset_reader.read(
+            dataset_params["datapath"] + "_char.csv"
+        )
+        de_ds = sentiment_dataset_reader.read(
+            dataset_params["datapath"] + "_backtrans_de.csv"
+        )
+        ru_ds = sentiment_dataset_reader.read(
+            dataset_params["datapath"] + "_backtrans_ru.csv"
+        )
+        zh_ds = sentiment_dataset_reader.read(
+            dataset_params["datapath"] + "_backtrans_zh.csv"
+        )
+        spell_ds = sentiment_dataset_reader.read(
+            dataset_params["datapath"] + "_spell.csv"
+        )
+        noisy_ds = [stack_ds, eda_ds, embedding_ds, clare_ds, check_ds, char_ds, de_ds, ru_ds, zh_ds, spell_ds]
 
     else:
         noisy_ds = [sentiment_dataset_reader.read(

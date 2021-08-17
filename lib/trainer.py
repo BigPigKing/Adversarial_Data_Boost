@@ -338,6 +338,8 @@ class TextTrainer(Trainer):
                         noisy_avg_losses.append(noisy_avg_loss)
                         noisy_avg_accs.append(noisy_avg_acc)
 
+            noisy_group = ["stack_eda", "eda", "word_embedding", "clare", "checklist", "charswap", "de", "ru", "zh", "spell"]
+
             print("Epochs                   : {}".format(epoch))
             print("Training Total Loss      : {:.5f}".format(loss_dict["avg_loss"]))
             print("Training Origin Loss     : {:.5f}".format(loss_dict["avg_origin_loss"]))
@@ -350,7 +352,8 @@ class TextTrainer(Trainer):
             print("Validation Acc           : {:.5f}".format(valid_avg_acc))
             print("Testing Loss             : {:.5f}".format(test_avg_loss))
             print("Testing Acc              : {:.5f}".format(test_avg_acc))
-            for noisy_avg_loss, noisy_avg_acc in zip(noisy_avg_losses, noisy_avg_accs):
+            for noisy_name, noisy_avg_loss, noisy_avg_acc in zip(noisy_group, noisy_avg_losses, noisy_avg_accs):
+                print("Noisy Dataset            : {}".format(noisy_name))
                 print("Noisy Loss               : {:.5f}".format(noisy_avg_loss))
                 print("Noisy Acc                : {:.5f}".format(noisy_avg_acc))
             print("Avg Noisy Loss           : {:.5f}".format(sum(noisy_avg_losses) / len(noisy_avg_losses)))
