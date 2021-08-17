@@ -189,8 +189,21 @@ class StanfordSentimentTreeBankDatasetReader(DatasetReader):
                         parsed_line.label()
                     )
 
-                    sentences.append(text)
-                    labels.append(parsed_line.label())
+                    if self._granularity == "2-class":
+                        label = int(parsed_line.label())
+                        if label > 2:
+                            label = "1"
+                            sentences.append(text)
+                            labels.append(label)
+                        elif label < 2:
+                            label = "0"
+                            sentences.append(text)
+                            labels.append(label)
+                        else:
+                            pass
+                    else:
+                        sentences.append(text)
+                        labels.append(parsed_line.label())
 
                     if instance is not None:
                         yield instance
