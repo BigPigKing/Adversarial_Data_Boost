@@ -241,12 +241,12 @@
             },
             "text_finetuner": {
                 "dataloader": {
-                    "train_batch_size": 8,
+                    "train_batch_size": 4,
                     "valid_batch_size": 60,
                     "test_batch_size": 60,
                     "shuffle": true
                 },
-                "accumulated_step": 4,
+                "accumulated_step": 8,
                 "epochs": 6,
                 "is_save": true,
                 "augmented_instance": [

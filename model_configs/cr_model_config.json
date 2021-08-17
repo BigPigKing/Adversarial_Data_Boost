@@ -217,45 +217,45 @@
                 "epochs": 1,
                 "is_save": true,
                 "is_writer": true,
-                "batch_size": 120
+                "batch_size": 60
             },
             "augmented_instance_generator": {
                 "num_processor": 3,
                 "select_mode": "default",
                 "select_policy": [
+                    "model_record/reinforce_model_weights/policy15",
                     "model_record/reinforce_model_weights/policy20",
+                    "model_record/reinforce_model_weights/policy25",
                     "model_record/reinforce_model_weights/policy30",
-                    "model_record/reinforce_model_weights/policy40",
-                    "model_record/reinforce_model_weights/policy50",
-                    "model_record/reinforce_model_weights/policy60",
-                    "model_record/reinforce_model_weights/policy70"
+                    "model_record/reinforce_model_weights/policy35",
+                    "model_record/reinforce_model_weights/policy40"
                 ],
                 "save_name": [
+                    "model_record/augments/augment15",
                     "model_record/augments/augment20",
+                    "model_record/augments/augment25",
                     "model_record/augments/augment30",
-                    "model_record/augments/augment40",
-                    "model_record/augments/augment50",
-                    "model_record/augments/augment60",
-                    "model_record/augments/augment70"
+                    "model_record/augments/augment35",
+                    "model_record/augments/augment40"
                 ]
             },
             "text_finetuner": {
                 "dataloader": {
-                    "train_batch_size": 8,
+                    "train_batch_size": 4,
                     "valid_batch_size": 60,
                     "test_batch_size": 60,
                     "shuffle": true
                 },
-                "accumulated_step": 4,
+                "accumulated_step": 8,
                 "epochs": 6,
                 "is_save": true,
                 "augmented_instance": [
+                    "model_record/augments/augment15",
                     "model_record/augments/augment20",
+                    "model_record/augments/augment25",
                     "model_record/augments/augment30",
-                    "model_record/augments/augment40",
-                    "model_record/augments/augment50",
-                    "model_record/augments/augment60",
-                    "model_record/augments/augment70"
+                    "model_record/augments/augment35",
+                    "model_record/augments/augment40"
                 ]
             }
         },

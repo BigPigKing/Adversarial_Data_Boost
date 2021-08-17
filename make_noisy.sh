@@ -26,5 +26,4 @@ python3 create_noisy.py --input-csv $1_test.csv --output-csv $1_backtrans_ru.csv
 python3 create_noisy.py --input-csv $1_test.csv --output-csv $1_backtrans_zh.csv --recipe backtrans --language zh --input-column sentence --overwrite --transformations-per-example 1
 
 # spelling
-python3 create_noisy.py --input-csv $1_test.csv --output-csv $1_spell.csv --input-column sentence --recipe spell --overwrite
- --transformations-per-example 3
+# python3 create_noisy.py --input-csv $1_test.csv --output-csv $1_spell.csv --input-column sentence --recipe spell --overwrite --transformations-per-example 3
