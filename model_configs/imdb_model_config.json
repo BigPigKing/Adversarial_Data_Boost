@@ -14,7 +14,7 @@
             "noise_datapath": "none"
         },
         "sentiment": {
-            "datapath": "data/sst/sst_2/SST",
+            "datapath": "data/imdb/IMDB",
             "noisy_datapath": "all",
             "transformer_model_name": "roberta-base",
             "max_length": 500
@@ -44,8 +44,8 @@
         },
         "scheduler": {
             "select_scheduler": "reduce",
-            "training_steps": 1300,
-            "warmup_steps": 80
+            "training_steps": 6750,
+            "warmup_steps": 405
         },
         "criterions": {
             "classification_criterion": "cross_entropy",
@@ -145,7 +145,7 @@
     },
 
     "train_mode": {
-        "select_mode": 1,
+        "select_mode": 0,
         "0": {
             "text_trainer": {
                 "dataloader": {
@@ -217,7 +217,7 @@
                 "epochs": 1,
                 "is_save": true,
                 "is_writer": true,
-                "batch_size": 120
+                "batch_size": 600
             },
             "augmented_instance_generator": {
                 "num_processor": 3,
