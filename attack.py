@@ -4,6 +4,9 @@ import pandas as pd
 from argparse import ArgumentParser
 
 
+NUM_CLASSES = 2
+
+
 class AugmentArgs:
     input_csv: str
     output_csv: str
@@ -43,6 +46,9 @@ def get_dataset(
     labels = input_df["label"].to_list()
     pre_dataset = list(zip(sentences, labels))
 
+    global NUM_CLASSES
+    NUM_CLASSES = len(set(labels))
+
     return textattack.datasets.Dataset(pre_dataset)
 
 
@@ -60,6 +66,10 @@ def get_attack_module(
         attack = textattack.attack_recipes.TextFoolerJin2019.build(model_wrapper)
     elif attack_method_name == "hotflip":
         attack = textattack.attack_recipes.HotFlipEbrahimi2017.build(model_wrapper)
+    elif attack_method_name == "bae":
+        attack = textattack.attack_recipes.BAEGarg2019.build(model_wrapper)
+    elif attack_method_name == "deepwordbug":
+        attack = textattack.attack_recipes.DeepWordBugGao2018.build(model_wrapper)
     else:
         raise ValueError("Unsupported Attack Method")
 
@@ -73,15 +83,16 @@ def main():
 
     train_ds = get_dataset(args.datapath_prefix + "_train.csv")
     test_ds = get_dataset(args.datapath_prefix + "_test.csv")
-    model = transformers.AutoModelForSequenceClassification.from_pretrained(args.target_model)
+    model = transformers.AutoModelForSequenceClassification.from_pretrained(args.target_model, num_labels=NUM_CLASSES)
+    print(NUM_CLASSES)
     tokenizer = transformers.AutoTokenizer.from_pretrained(args.target_model)
     model_wrapper = textattack.models.wrappers.HuggingFaceModelWrapper(model, tokenizer)
 
     attack = get_attack_module(args.attack_method, model_wrapper)
 
     training_args = textattack.TrainingArgs(
-        num_epochs=15,
-        num_clean_epochs=3,
+        num_epochs=12,
+        num_clean_epochs=1,
         attack_epoch_interval=3,
         num_train_adv_examples=6000,
         learning_rate=1e-5,
