@@ -1,6 +1,38 @@
 import textattack
 import transformers
 import pandas as pd
+from argparse import ArgumentParser
+
+
+class AugmentArgs:
+    input_csv: str
+    output_csv: str
+    input_column: str
+    overwrite: bool = True
+
+    @classmethod
+    def _add_parser_args(cls, parser):
+        parser.add_argument(
+            "--datapath-prefix",
+            required=True,
+            type=str,
+            help="Path of input dataset to attack.",
+        )
+
+        parser.add_argument(
+            "--attack-method",
+            required=True,
+            type=str,
+            help="Name of attack recipe."
+        )
+
+        parser.add_argument(
+            "--target-model",
+            required=False,
+            type=str,
+            default="roberta-base"
+        )
+
 
 
 def get_dataset(
@@ -14,20 +46,43 @@ def get_dataset(
     return textattack.datasets.Dataset(pre_dataset)
 
 
+def get_attack_module(
+    attack_method_name: str,
+    model_wrapper
+):
+    if attack_method_name == "pwws":
+        attack = textattack.attack_recipes.PWWSRen2019.build(model_wrapper)
+    elif attack_method_name == "fast-alzantot":
+        attack = textattack.attack_recipes.FasterGeneticAlgorithmJia2019.build(model_wrapper)
+    elif attack_method_name == "iga":
+        attack = textattack.attack_recipes.IGAWang2019.build(model_wrapper)
+    elif attack_method_name == "textfooler":
+        attack = textattack.attack_recipes.TextFoolerJin2019.build(model_wrapper)
+    else:
+        raise ValueError("Unsupported Attack Method")
+
+    return attack
+
+
 def main():
-    train_ds = get_dataset("data/sst/sst_2/SST_train.csv")
-    test_ds = get_dataset("data/sst/sst_2/SST_test.csv")
-    model = transformers.AutoModelForSequenceClassification.from_pretrained("roberta-base")
-    tokenizer = transformers.AutoTokenizer.from_pretrained("roberta-base")
+    parser = ArgumentParser()
+    AugmentArgs._add_parser_args(parser)
+    args = parser.parse_args()
+
+    train_ds = get_dataset(args.datapath_prefix + "_train.csv")
+    test_ds = get_dataset(args.datapath_prefix + "_test.csv")
+    model = transformers.AutoModelForSequenceClassification.from_pretrained(args.target_model)
+    tokenizer = transformers.AutoTokenizer.from_pretrained(args.target_model)
     model_wrapper = textattack.models.wrappers.HuggingFaceModelWrapper(model, tokenizer)
 
-    attack = textattack.attack_recipes.PWWSRen2019.build(model_wrapper)
+    attack = get_attack_module(args.attack_method, model_wrapper)
+
     training_args = textattack.TrainingArgs(
         num_epochs=15,
         num_clean_epochs=3,
         attack_epoch_interval=3,
         num_train_adv_examples=6000,
-        learning_rate=2e-5,
+        learning_rate=1e-5,
         num_warmup_steps=0.06,
         attack_num_workers_per_device=9,
         per_device_train_batch_size=8,
@@ -46,18 +101,19 @@ def main():
     trainer.train()
 
     noisy_ds = []
-    noisy_ds.append(get_dataset("data/sst/sst_2/SST_stack_eda.csv"))
-    noisy_ds.append(get_dataset("data/sst/sst_2/SST_eda.csv"))
-    noisy_ds.append(get_dataset("data/sst/sst_2/SST_embedding.csv"))
-    noisy_ds.append(get_dataset("data/sst/sst_2/SST_clare.csv"))
-    noisy_ds.append(get_dataset("data/sst/sst_2/SST_checklist.csv"))
-    noisy_ds.append(get_dataset("data/sst/sst_2/SST_char.csv"))
-    noisy_ds.append(get_dataset("data/sst/sst_2/SST_backtrans_de.csv"))
-    noisy_ds.append(get_dataset("data/sst/sst_2/SST_backtrans_ru.csv"))
-    noisy_ds.append(get_dataset("data/sst/sst_2/SST_backtrans_zh.csv"))
-    noisy_ds.append(get_dataset("data/sst/sst_2/SST_spell.csv"))
+    noisy_names = ["stack_eda", "eda", "embedding", "clare", "checklist", "char", "backtrans_de", "backtrans_ru", "backtrans_zh", "spell"]
+    noisy_ds.append(get_dataset(args.datapath_prefix + "_stack_eda.csv"))
+    noisy_ds.append(get_dataset(args.datapath_prefix + "_eda.csv"))
+    noisy_ds.append(get_dataset(args.datapath_prefix + "_embedding.csv"))
+    noisy_ds.append(get_dataset(args.datapath_prefix + "_clare.csv"))
+    noisy_ds.append(get_dataset(args.datapath_prefix + "_checklist.csv"))
+    noisy_ds.append(get_dataset(args.datapath_prefix + "_char.csv"))
+    noisy_ds.append(get_dataset(args.datapath_prefix + "_backtrans_de.csv"))
+    noisy_ds.append(get_dataset(args.datapath_prefix + "_backtrans_ru.csv"))
+    noisy_ds.append(get_dataset(args.datapath_prefix + "_backtrans_zh.csv"))
+    noisy_ds.append(get_dataset(args.datapath_prefix + "_spell.csv"))
 
-    for nds in noisy_ds:
+    for idx, nds in enumerate(noisy_ds):
         trainer = textattack.Trainer(
             model_wrapper,
             "classification",
@@ -66,6 +122,7 @@ def main():
             nds,
             training_args
         )
+        print(noisy_names[idx])
         trainer.evaluate()
 
 
