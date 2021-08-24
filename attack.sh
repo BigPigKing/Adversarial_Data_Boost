@@ -1,3 +1,6 @@
+# hotflip
+python3 attack.py --datapath-prefix $1 --attack-method hotflip --target-model roberta-base
+
 # textfooler
 python3 attack.py --datapath-prefix $1 --attack-method textfooler --target-model roberta-base
 

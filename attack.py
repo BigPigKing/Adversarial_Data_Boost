@@ -58,6 +58,8 @@ def get_attack_module(
         attack = textattack.attack_recipes.IGAWang2019.build(model_wrapper)
     elif attack_method_name == "textfooler":
         attack = textattack.attack_recipes.TextFoolerJin2019.build(model_wrapper)
+    elif attack_method_name == "hotflip":
+        attack = textattack.attack_recipes.HotFlipEbrahimi2017.build(model_wrapper)
     else:
         raise ValueError("Unsupported Attack Method")
 
