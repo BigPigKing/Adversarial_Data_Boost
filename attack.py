@@ -92,7 +92,7 @@ def main():
 
     training_args = textattack.TrainingArgs(
         num_epochs=12,
-        num_clean_epochs=1,
+        num_clean_epochs=3,
         attack_epoch_interval=3,
         num_train_adv_examples=6000,
         learning_rate=1e-5,
