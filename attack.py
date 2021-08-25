@@ -37,12 +37,12 @@ class AugmentArgs:
         )
 
 
-
 def get_dataset(
     datapath: str
 ):
     input_df = pd.read_csv(datapath)
     sentences = input_df["sentence"].to_list()
+    sentences = [str(sentence) for sentence in sentences]
     labels = input_df["label"].to_list()
     pre_dataset = list(zip(sentences, labels))
 
@@ -70,6 +70,14 @@ def get_attack_module(
         attack = textattack.attack_recipes.BAEGarg2019.build(model_wrapper)
     elif attack_method_name == "deepwordbug":
         attack = textattack.attack_recipes.DeepWordBugGao2018.build(model_wrapper)
+    elif attack_method_name == "input-reduction":
+        attack = textattack.attack_recipes.InputReductionFeng2018.build(model_wrapper)
+    elif attack_method_name == "kuleshov":
+        attack = textattack.attack_recipes.Kuleshov2017.build(model_wrapper)
+    elif attack_method_name == "pso":
+        attack = textattack.attack_recipes.PSOZang2020.build(model_wrapper)
+    elif attack_method_name == "textbugger":
+        attack = textattack.attack_recipes.TextBuggerLi2018.build(model_wrapper)
     else:
         raise ValueError("Unsupported Attack Method")
 
@@ -84,16 +92,15 @@ def main():
     train_ds = get_dataset(args.datapath_prefix + "_train.csv")
     test_ds = get_dataset(args.datapath_prefix + "_test.csv")
     model = transformers.AutoModelForSequenceClassification.from_pretrained(args.target_model, num_labels=NUM_CLASSES)
-    print(NUM_CLASSES)
     tokenizer = transformers.AutoTokenizer.from_pretrained(args.target_model)
     model_wrapper = textattack.models.wrappers.HuggingFaceModelWrapper(model, tokenizer)
 
     attack = get_attack_module(args.attack_method, model_wrapper)
 
     training_args = textattack.TrainingArgs(
-        num_epochs=12,
+        num_epochs=9,
         num_clean_epochs=3,
-        attack_epoch_interval=3,
+        attack_epoch_interval=2,
         num_train_adv_examples=6000,
         learning_rate=1e-5,
         num_warmup_steps=0.06,
