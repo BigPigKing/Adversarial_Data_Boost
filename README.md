@@ -252,7 +252,7 @@ Including SEDA, EDA, Word Embedding, Clare, Checklist, Charswap, BackTranslation
 ```bash
 ./make_noisy_to_all.sh
 ```
-![](https://i.imgur.com/eqt4PLp.png)
+![](https://i.imgur.com/5CScJ2G.png)
 
 If you want to change the specific hyperparameter for different augmentation methods.
 
@@ -266,12 +266,10 @@ And change the hyperparameter to the favor one.
 ### ModelLoading
 
 SDA will store all the model weight in ***model_record***. 
-
-![](https://i.imgur.com/7NWXtK8.png)
+![](https://i.imgur.com/eXBWICR.png)
 
 For the weights of differen AT methods, it will stored in ***outputs***
-
-![](https://i.imgur.com/eejo5Jb.png)
+![](https://i.imgur.com/CZGvav0.png)
 ![](https://i.imgur.com/AZVOvJU.png)
 
 And all the detailed can be accessed.
