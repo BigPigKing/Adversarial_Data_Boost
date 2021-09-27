@@ -5,7 +5,8 @@
 <p align="center">
   <a href="#about">About</a> •
   <a href="#setup">Setup</a> •
-  <a href="#usage">Main Usage</a> •
+  <a href="#mainusage">Main Usage</a> •
+  <a href="#otherusage">Other Usage</a> •
   <a href="#design">Design</a> 
 </p>
   
@@ -50,7 +51,7 @@ rm model_config.json
 cp model_configs/sst2_model_config.json model_config.json
 ```
 
-### 2. Training the baseline text-model from scratch
+### 2. Training the Baseline Text-model from Scratch
 
 To commit an adversarial training, we need to first train an text model from scratch with clean data.
 
@@ -62,64 +63,77 @@ Waiting until the training is finished, if the training process going to the tra
 
 Otherwise the training of generator and discriminator will be intereact for **one time**.
 
+### 3. Record the Baseline Model for Different Hyperparameter Setting
 
+It is essential to retain the parameter of original clean model, thus the comparasion can be coducted easily
 
-
-### Help: `textattack --help`
-
-TextAttack's main features can all be accessed via the `textattack` command. Two very
-common commands are `textattack attack <args>`, and `textattack augment <args>`. You can see more
-information about all commands using 
 ```bash
-textattack --help 
-```
-or a specific command using, for example,
-```bash
-textattack attack --help
+cd model_record
+cp -r text_model_weights test_bed  # Retain the original clean model
 ```
 
-The [`examples/`](examples/) folder includes scripts showing common TextAttack usage for training models, running attacks, and augmenting a CSV file. 
+### 4. Going to the *model_config.json* and Change the selected model to ***1***
 
+``` bash
+vim model_config.json
+```
+And you will get the *modelconfig.json* like the below.
 
-The [documentation website](https://textattack.readthedocs.io/en/latest) contains walkthroughs explaining basic usage of TextAttack, including building a custom transformation and a custom constraint..
+![](https://i.imgur.com/5dEyp8D.png)
 
+### 5. Running the *run.sh* to Attack and Defense for Multiple Times
 
-
-### Running Attacks: `textattack attack --help`
-
-The easiest way to try out an attack is via the command-line interface, `textattack attack`. 
-
-> **Tip:** If your machine has multiple GPUs, you can distribute the attack across them using the `--parallel` option. For some attacks, this can really help performance. (If you want to attack Keras models in parallel, please check out `examples/attack/attack_keras_parallel.py` instead)
-
-Here are some concrete examples:
-
-*TextFooler on BERT trained on the MR sentiment classification dataset*: 
-```bash
-textattack attack --recipe textfooler --model bert-base-uncased-mr --num-examples 100
+``` bash
+./run.sh
 ```
 
-*DeepWordBug on DistilBERT trained on the Quora Question Pairs paraphrase identification dataset*: 
+The times can be choose by change the number of seq. (30 in the figure)
+![](https://i.imgur.com/LkVyUg6.png)
+
+### 6. Clean Log file and Get Original Model
+
+Once you finish the experiments, one can use *./clean.sh* to back to the original text model which *training only using clean dataset without adversarial training.*
+
 ```bash
-textattack attack --model distilbert-base-uncased-cola --recipe deepwordbug --num-examples 100
+./clean.sh
 ```
 
-*Beam search with beam width 4 and word embedding transformation and untargeted goal function on an LSTM*:
-```bash
-textattack attack --model lstm-mr --num-examples 20 \
- --search-method beam-search^beam_width=4 --transformation word-swap-embedding \
- --constraints repeat stopword max-words-perturbed^max_num_words=2 embedding^min_cos_sim=0.8 part-of-speech \
- --goal-function untargeted-classification
+## Other Usage
+There are also many different function is supported in SDA including ***Visualization, TextAttack, TextAugment and ModelLoading***.
+
+### Visualization
+One can check the training process of adversarial training using ***Tensorboard***
+
+``` bash
+tensorboard --logdir=runs --samples_per_plugin=text=100
+```
+![](https://i.imgur.com/gtZsz2R.png)
+![](https://i.imgur.com/qLErIbO.png)
+![](https://i.imgur.com/bKlwMRW.png)
+![](https://i.imgur.com/XOYbrDj.png)
+
+Or check the **log.txt** for more detailed information
+
+``` bash
+cat log.txt
+```
+![](https://i.imgur.com/puLN74W.png)
+
+### TextAttack
+SDA also provides the training process of the other adversarial training methods. It can be done by leverageing the power of **TextAttack Module**
+
+``` bash
+pip3 install textattack  # it should already installed in previous steps
+./attack.sh
 ```
 
-> **Tip:** Instead of specifying a dataset and number of examples, you can pass `--interactive` to attack samples inputted by the user.
+Running the attack.sh, and it will automatically running three different AT methods, ***DWB, PWWS, and TextBugger***.
 
-### Attacks and Papers Implemented ("Attack Recipes"): `textattack attack --recipe [recipe_name]`
+If you want to change differentt target model, just change the model card in ***--target-model***
 
-We include attack recipes which implement attacks from the literature. You can list attack recipes using `textattack list attack-recipes`.
+![](https://i.imgur.com/W8lJw14.png)
 
-To run an attack recipe: `textattack attack --recipe [recipe_name]`
-
-<img src="docs/_static/imgs/overview.png" alt="TextAttack Overview" style="display: block; margin: 0 auto;" />
+And the detailed of different AT method is provided in below:
 
 <table  style="width:100%" border="1">
 <thead>
@@ -136,23 +150,6 @@ To run an attack recipe: `textattack attack --recipe [recipe_name]`
   <tr><td style="text-align: center;" colspan="6"><strong><br>Attacks on classification tasks, like sentiment classification and entailment:<br></strong></td></tr>
 
 <tr>
-<td><code>a2t</code> 
-<span class="citation" data-cites="yoo2021a2t"></span></td>
-<td><sub>Untargeted {Classification, Entailment}</sub></td>
-<td><sub>Percentage of words perturbed, Word embedding distance, DistilBERT sentence encoding cosine similarity, part-of-speech consistency</sub></td>
-<td><sub>Counter-fitted word embedding swap (or) BERT Masked Token Prediction</sub></td>
-<td><sub>Greedy-WIR (gradient)</sub></td>
-<td ><sub>from (["Towards Improving Adversarial Training of NLP Models" (Yoo et al., 2021)](https://arxiv.org/abs/2109.00544))</sub></td>
-</tr>
-<tr>
-<td><code>alzantot</code>  <span class="citation" data-cites="Alzantot2018GeneratingNL Jia2019CertifiedRT"></span></td>
-<td><sub>Untargeted {Classification, Entailment}</sub></td>
-<td><sub>Percentage of words perturbed, Language Model perplexity, Word embedding distance</sub></td>
-<td><sub>Counter-fitted word embedding swap</sub></td>
-<td><sub>Genetic Algorithm</sub></td>
-<td ><sub>from (["Generating Natural Language Adversarial Examples" (Alzantot et al., 2018)](https://arxiv.org/abs/1804.07998))</sub></td>
-</tr>
-<tr>
 <td><code>bae</code> <span class="citation" data-cites="garg2020bae"></span></td>
 <td><sub>Untargeted Classification</sub></td>
 <td><sub>USE sentence encoding cosine similarity</sub></td>
@@ -160,30 +157,7 @@ To run an attack recipe: `textattack attack --recipe [recipe_name]`
 <td><sub>Greedy-WIR</sub></td>
 <td ><sub>BERT masked language model transformation attack from (["BAE: BERT-based Adversarial Examples for Text Classification" (Garg & Ramakrishnan, 2019)](https://arxiv.org/abs/2004.01970)). </td>
 </tr>
-<tr>
-<td><code>bert-attack</code> <span class="citation" data-cites="li2020bertattack"></span></td>
-<td><sub>Untargeted Classification</td>
-<td><sub>USE sentence encoding cosine similarity, Maximum number of words perturbed</td>
-<td><sub>BERT Masked Token Prediction (with subword expansion)</td>
-<td><sub>Greedy-WIR</sub></td>
-<td ><sub> (["BERT-ATTACK: Adversarial Attack Against BERT Using BERT" (Li et al., 2020)](https://arxiv.org/abs/2004.09984))</sub></td>
-</tr>
-<tr>
-<td><code>checklist</code> <span class="citation" data-cites="Gao2018BlackBoxGO"></span></td>
-<td><sub>{Untargeted, Targeted} Classification</sub></td>
-<td><sub>checklist distance</sub></td>
-<td><sub>contract, extend, and substitutes name entities</sub></td>
-<td><sub>Greedy-WIR</sub></td>
-<td ><sub>Invariance testing implemented in CheckList . (["Beyond Accuracy: Behavioral Testing of NLP models with CheckList" (Ribeiro et al., 2020)](https://arxiv.org/abs/2005.04118))</sub></td>
-</tr>
-<tr>
-<td> <code>clare</code> <span class="citation" data-cites="Alzantot2018GeneratingNL Jia2019CertifiedRT"></span></td>
-<td><sub>Untargeted {Classification, Entailment}</sub></td>
-<td><sub>USE sentence encoding cosine similarity</sub></td>
-<td><sub>RoBERTa Masked Prediction for token swap, insert and merge</sub></td>
-<td><sub>Greedy</sub></td>
-<td ><sub>["Contextualized Perturbation for Textual Adversarial Attack" (Li et al., 2020)](https://arxiv.org/abs/2009.07502))</sub></td>
-</tr>
+
 <tr>
 <td><code>deepwordbug</code> <span class="citation" data-cites="Gao2018BlackBoxGO"></span></td>
 <td><sub>{Untargeted, Targeted} Classification</sub></td>
@@ -233,14 +207,6 @@ To run an attack recipe: `textattack attack --recipe [recipe_name]`
 <td ><sub>(["Adversarial Examples for Natural Language Classification Problems" (Kuleshov et al., 2018)](https://openreview.net/pdf?id=r1QZ3zbAZ)) </sub></td>
 </tr>
 <tr>
-<td><code>pruthi</code> <span class="citation" data-cites="pruthi2019combating"></span></td>
-<td><sub>Untargeted Classification</sub></td>
-<td><sub>Minimum word length, Maximum number of words perturbed</sub></td>
-<td><sub>{Neighboring Character Swap, Character Deletion, Character Insertion, Keyboard-Based Character Swap}</sub></td>
-<td><sub>Greedy search</sub></td>
-<td ><sub>simulates common typos (["Combating Adversarial Misspellings with Robust Word Recognition" (Pruthi et al., 2019)](https://arxiv.org/abs/1905.11268) </sub></td>
-</tr>
-<tr>
 <td><code>pso</code> <span class="citation" data-cites="pso-zang-etal-2020-word"></span></td>
 <td><sub>Untargeted Classification</sub></td>
 <td></td>
@@ -273,328 +239,47 @@ To run an attack recipe: `textattack attack --recipe [recipe_name]`
 <td ><sub>Greedy attack with word importance ranking  (["Is Bert Really Robust?" (Jin et al., 2019)](https://arxiv.org/abs/1907.11932))</sub> </td>
 </tr>
 
-<tr><td style="text-align: center;" colspan="6"><strong><br>Attacks on sequence-to-sequence models: <br></strong></td></tr>
-
-<tr>
-<td><code>morpheus</code> <span class="citation" data-cites="morpheus-tan-etal-2020-morphin"></span></td>
-<td><sub>Minimum BLEU Score</sub> </td>
-<td></td>
-<td><sub>Inflection Word Swap</sub> </td>
-<td><sub>Greedy search</sub> </td>
-<td ><sub>Greedy to replace words with their inflections with the goal of minimizing BLEU score (["It’s Morphin’ Time! Combating Linguistic Discrimination with Inflectional Perturbations"](https://www.aclweb.org/anthology/2020.acl-main.263.pdf)</sub> </td>
-</tr>
-
-</tr>
-<tr>
-<td><code>seq2sick</code> :(black-box) <span class="citation" data-cites="cheng2018seq2sick"></span></td>
-<td><sub>Non-overlapping output</sub> </td>
-<td></td>
-<td><sub>Counter-fitted word embedding swap</sub> </td>
-<td><sub>Greedy-WIR</sub></td>
-<td ><sub>Greedy attack with goal of changing every word in the output translation. Currently implemented as black-box with plans to change to white-box as done in paper (["Seq2Sick: Evaluating the Robustness of Sequence-to-Sequence Models with Adversarial Examples" (Cheng et al., 2018)](https://arxiv.org/abs/1803.01128)) </sub>  </td>
-</tr>
-
-
 </tbody>
 </font>
 </table>
 
+### TextAugment
 
+SDA also provides the function to augment the target dataset automatically using ten different augmentation methods.
 
-#### Recipe Usage Examples
-
-Here are some examples of testing attacks from the literature from the command-line:
-
-*TextFooler against BERT fine-tuned on SST-2:*
-```bash
-textattack attack --model bert-base-uncased-sst2 --recipe textfooler --num-examples 10
-```
-
-*seq2sick (black-box) against T5 fine-tuned for English-German translation:*
-```bash
- textattack attack --model t5-en-de --recipe seq2sick --num-examples 100
-```
-
-### Augmenting Text: `textattack augment`
-
-Many of the components of TextAttack are useful for data augmentation. The `textattack.Augmenter` class
-uses a transformation and a list of constraints to augment data. We also offer  built-in recipes
-for data augmentation:
-- `wordnet` augments text by replacing words with WordNet synonyms
-- `embedding` augments text by replacing words with neighbors in the counter-fitted embedding space, with a constraint to ensure their cosine similarity is at least 0.8
-- `charswap` augments text by substituting, deleting, inserting, and swapping adjacent characters
-- `eda` augments text with a combination of word insertions, substitutions and deletions.
-- `checklist` augments text by contraction/extension and by substituting names, locations, numbers.
-- `clare` augments text by replacing, inserting, and merging with a pre-trained masked language model.
-
-
-#### Augmentation Command-Line Interface
-The easiest way to use our data augmentation tools is with `textattack augment <args>`. `textattack augment`
-takes an input CSV file and text column to augment, along with the number of words to change per augmentation
-and the number of augmentations per input example. It outputs a CSV in the same format with all the augmentation
-examples corresponding to the proper columns.
-
-For example, given the following as `examples.csv`:
-
-```csv
-"text",label
-"the rock is destined to be the 21st century's new conan and that he's going to make a splash even greater than arnold schwarzenegger , jean- claud van damme or steven segal.", 1
-"the gorgeously elaborate continuation of 'the lord of the rings' trilogy is so huge that a column of words cannot adequately describe co-writer/director peter jackson's expanded vision of j . r . r . tolkien's middle-earth .", 1
-"take care of my cat offers a refreshingly different slice of asian cinema .", 1
-"a technically well-made suspenser . . . but its abrupt drop in iq points as it races to the finish line proves simply too discouraging to let slide .", 0
-"it's a mystery how the movie could be released in this condition .", 0
-```
-
-The command 
-```bash
-textattack augment --input-csv examples.csv --output-csv output.csv  --input-column text --recipe embedding --pct-words-to-swap .1 --transformations-per-example 2 --exclude-original
-```
-will augment the `text` column by altering 10% of each example's words, generating twice as many augmentations as original inputs, and exclude the original inputs from the
-output CSV. (All of this will be saved to `augment.csv` by default.)
-
-> **Tip:** Just as running attacks interactively, you can also pass `--interactive` to augment samples inputted by the user to quickly try out different augmentation recipes!
-
-
-After augmentation, here are the contents of `augment.csv`:
-```csv
-text,label
-"the rock is destined to be the 21st century's newest conan and that he's gonna to make a splashing even stronger than arnold schwarzenegger , jean- claud van damme or steven segal.",1
-"the rock is destined to be the 21tk century's novel conan and that he's going to make a splat even greater than arnold schwarzenegger , jean- claud van damme or stevens segal.",1
-the gorgeously elaborate continuation of 'the lord of the rings' trilogy is so huge that a column of expression significant adequately describe co-writer/director pedro jackson's expanded vision of j . rs . r . tolkien's middle-earth .,1
-the gorgeously elaborate continuation of 'the lordy of the piercings' trilogy is so huge that a column of mots cannot adequately describe co-novelist/director peter jackson's expanded vision of j . r . r . tolkien's middle-earth .,1
-take care of my cat offerings a pleasantly several slice of asia cinema .,1
-taking care of my cat offers a pleasantly different slice of asiatic kino .,1
-a technically good-made suspenser . . . but its abrupt drop in iq points as it races to the finish bloodline proves straightforward too disheartening to let slide .,0
-a technically well-made suspenser . . . but its abrupt drop in iq dot as it races to the finish line demonstrates simply too disheartening to leave slide .,0
-it's a enigma how the film wo be releases in this condition .,0
-it's a enigma how the filmmaking wo be publicized in this condition .,0
-```
-
-The 'embedding' augmentation recipe uses counterfitted embedding nearest-neighbors to augment data.
-
-#### Augmentation Python Interface
-In addition to the command-line interface, you can augment text dynamically by importing the
-`Augmenter` in your own code. All `Augmenter` objects implement `augment` and `augment_many` to generate augmentations
-of a string or a list of strings. Here's an example of how to use the `EmbeddingAugmenter` in a python script:
-
-```python
->>> from textattack.augmentation import EmbeddingAugmenter
->>> augmenter = EmbeddingAugmenter()
->>> s = 'What I cannot create, I do not understand.'
->>> augmenter.augment(s)
-['What I notable create, I do not understand.', 'What I significant create, I do not understand.', 'What I cannot engender, I do not understand.', 'What I cannot creating, I do not understand.', 'What I cannot creations, I do not understand.', 'What I cannot create, I do not comprehend.', 'What I cannot create, I do not fathom.', 'What I cannot create, I do not understanding.', 'What I cannot create, I do not understands.', 'What I cannot create, I do not understood.', 'What I cannot create, I do not realise.']
-```
-You can also create your own augmenter from scratch by importing transformations/constraints from `textattack.transformations` and `textattack.constraints`. Here's an example that generates augmentations of a string using `WordSwapRandomCharacterDeletion`:
-
-```python
->>> from textattack.transformations import WordSwapRandomCharacterDeletion
->>> from textattack.transformations import CompositeTransformation
->>> from textattack.augmentation import Augmenter
->>> transformation = CompositeTransformation([WordSwapRandomCharacterDeletion()])
->>> augmenter = Augmenter(transformation=transformation, transformations_per_example=5)
->>> s = 'What I cannot create, I do not understand.'
->>> augmenter.augment(s)
-['What I cannot creae, I do not understand.', 'What I cannot creat, I do not understand.', 'What I cannot create, I do not nderstand.', 'What I cannot create, I do nt understand.', 'Wht I cannot create, I do not understand.']
-```
-
-### Training Models:  `textattack train`
-
-Our model training code is available via `textattack train` to help you train LSTMs,
-CNNs, and `transformers` models using TextAttack out-of-the-box. Datasets are
-automatically loaded using the `datasets` package.
-
-#### Training Examples
-*Train our default LSTM for 50 epochs on the Yelp Polarity dataset:*
-```bash
-textattack train --model-name-or-path lstm --dataset yelp_polarity  --epochs 50 --learning-rate 1e-5
-```
-
-
-*Fine-Tune `bert-base` on the `CoLA` dataset for 5 epochs**:
-```bash
-textattack train --model-name-or-path bert-base-uncased --dataset glue^cola --per-device-train-batch-size 8 --epochs 5
-```
-
-
-### To check datasets: `textattack peek-dataset`
-
-To take a closer look at a dataset, use `textattack peek-dataset`. TextAttack will print some cursory statistics about the inputs and outputs from the dataset. For example, 
-```bash
-textattack peek-dataset --dataset-from-huggingface snli
-```
-will show information about the SNLI dataset from the NLP package.
-
-
-### To list functional components: `textattack list`
-
-There are lots of pieces in TextAttack, and it can be difficult to keep track of all of them. You can use `textattack list` to list components, for example, pretrained models (`textattack list models`) or available search methods (`textattack list search-methods`).
-
-
-## Design
-
-
-### Models 
-
-TextAttack is model-agnostic!  You can use `TextAttack` to analyze any model that outputs IDs, tensors, or strings. To help users, TextAttack includes pre-trained models for different common NLP tasks. This makes it easier for
-users to get started with TextAttack. It also enables a more fair comparison of attacks from
-the literature.
-
-
-
-#### Built-in Models and Datasets
-
-TextAttack also comes built-in with models and datasets. Our command-line interface will automatically match the correct 
-dataset to the correct model. We include 82 different (Oct 2020) pre-trained models for each of the nine [GLUE](https://gluebenchmark.com/) 
-tasks, as well as some common datasets for classification, translation, and summarization. 
-
-A list of available pretrained models and their validation accuracies is available at
-[textattack/models/README.md](textattack/models/README.md). You can also view a full list of provided models 
-& datasets via `textattack attack --help`.
-
-Here's an example of using one of the built-in models (the SST-2 dataset is automatically loaded):
+Including SEDA, EDA, Word Embedding, Clare, Checklist, Charswap, BackTranslation (De, Zh, Ru), and Spelling.
 
 ```bash
-textattack attack --model roberta-base-sst2 --recipe textfooler --num-examples 10
+./make_noisy_to_all.sh
 ```
+![](https://i.imgur.com/eqt4PLp.png)
 
-#### HuggingFace support: `transformers` models and `datasets` datasets
-
-We also provide built-in support for [`transformers` pretrained models](https://huggingface.co/models) 
-and datasets from the [`datasets` package](https://github.com/huggingface/datasets)! Here's an example of loading
-and attacking a pre-trained model and dataset:
+If you want to change the specific hyperparameter for different augmentation methods.
 
 ```bash
-textattack attack --model-from-huggingface distilbert-base-uncased-finetuned-sst-2-english --dataset-from-huggingface glue^sst2 --recipe deepwordbug --num-examples 10
+vim make_noisy.sh
 ```
+![](https://i.imgur.com/kGe4YKH.png)
 
-You can explore other pre-trained models using the `--model-from-huggingface` argument, or other datasets by changing 
-`--dataset-from-huggingface`.
+And change the hyperparameter to the favor one.
 
+### ModelLoading
 
-#### Loading a model or dataset from a file
+SDA will store all the model weight in ***model_record***. 
 
-You can easily try out an attack on a local model or dataset sample. To attack a pre-trained model,
-create a short file that loads them as variables `model` and `tokenizer`.  The `tokenizer` must
-be able to transform string inputs to lists or tensors of IDs using a method called `encode()`. The
-model must take inputs via the `__call__` method.
+![](https://i.imgur.com/7NWXtK8.png)
 
-##### Custom Model from a file
-To experiment with a model you've trained, you could create the following file
-and name it `my_model.py`:
+For the weights of differen AT methods, it will stored in ***outputs***
 
-```python
-model = load_your_model_with_custom_code() # replace this line with your model loading code
-tokenizer = load_your_tokenizer_with_custom_code() # replace this line with your tokenizer loading code
-```
+![](https://i.imgur.com/eejo5Jb.png)
+![](https://i.imgur.com/AZVOvJU.png)
 
-Then, run an attack with the argument `--model-from-file my_model.py`. The model and tokenizer will be loaded automatically.
+And all the detailed can be accessed.
 
+## Citing SDA
 
-
-### Custom Datasets
-
-
-#### Dataset from a file
-
-Loading a dataset from a file is very similar to loading a model from a file. A 'dataset' is any iterable of `(input, output)` pairs.
-The following example would load a sentiment classification dataset from file `my_dataset.py`:
-
-```python
-dataset = [('Today was....', 1), ('This movie is...', 0), ...]
-```
-
-You can then run attacks on samples from this dataset by adding the argument `--dataset-from-file my_dataset.py`.
-
-
-#### Dataset via AttackedText class
-
-To allow for word replacement after a sequence has been tokenized, we include an `AttackedText` object
-which maintains both a list of tokens and the original text, with punctuation. We use this object in favor of a list of words or just raw text.
-
-
-
-#### Dataset loading via other mechanism, see: [here](https://textattack.readthedocs.io/en/latest/api/datasets.html)
-
-
-
-### Attacks and how to design a new attack 
-
-
-We formulate an attack as consisting of four components: a **goal function** which determines if the attack has succeeded, **constraints** defining which perturbations are valid, a **transformation** that generates potential modifications given an input, and a **search method** which traverses through the search space of possible perturbations. The attack attempts to perturb an input text such that the model output fulfills the goal function (i.e., indicating whether the attack is successful) and the perturbation adheres to the set of constraints (e.g., grammar constraint, semantic similarity constraint). A search method is used to find a sequence of transformations that produce a successful adversarial example.
-
-
-This modular design unifies adversarial attack methods into one system, enables us to easily assemble attacks from the literature while re-using components that are shared across attacks. We provides clean, readable implementations of 16 adversarial attack recipes from the literature (see above table). For the first time, these attacks can be benchmarked, compared, and analyzed in a standardized setting.
-
-
-TextAttack is model-agnostic - meaning it can run attacks on models implemented in any deep learning framework. Model objects must be able to take a string (or list of strings) and return an output that can be processed by the goal function. For example, machine translation models take a list of strings as input and produce a list of strings as output. Classification and entailment models return an array of scores. As long as the user's model meets this specification, the model is fit to use with TextAttack.
-
-
-
-#### Goal Functions
-
-A `GoalFunction` takes as input an `AttackedText` object, scores it, and determines whether the attack has succeeded, returning a `GoalFunctionResult`.
-
-#### Constraints
-
-A `Constraint` takes as input a current `AttackedText`, and a list of transformed `AttackedText`s. For each transformed option, it returns a boolean representing whether the constraint is met.
-
-#### Transformations
-
-A `Transformation` takes as input an `AttackedText` and returns a list of possible transformed `AttackedText`s. For example, a transformation might return all possible synonym replacements.
-
-#### Search Methods
-
-A `SearchMethod` takes as input an initial `GoalFunctionResult` and returns a final `GoalFunctionResult` The search is given access to the `get_transformations` function, which takes as input an `AttackedText` object and outputs a list of possible transformations filtered by meeting all of the attack’s constraints. A search consists of successive calls to `get_transformations` until the search succeeds (determined using `get_goal_results`) or is exhausted.
-
-
-## On Benchmarking Attacks
-
-- See our analysis paper: Searching for a Search Method: Benchmarking Search Algorithms for Generating NLP Adversarial Examples at [EMNLP BlackBoxNLP](https://arxiv.org/abs/2009.06368). 
-
-- As we emphasized in the above paper, we don't recommend to directly compare Attack Recipes out of the box. 
-
-- This comment is due to that attack recipes in the recent literature used different ways or thresholds in setting up their constraints. Without the constraint space held constant, an increase in attack success rate could come from an improved search or transformation method or a less restrictive search space. 
-
-- Our Github on benchmarking scripts and results:  [TextAttack-Search-Benchmark Github](https://github.com/QData/TextAttack-Search-Benchmark)
-
-
-## On Quality of Generated Adversarial Examples in Natural Language
-
-- Our analysis Paper in [EMNLP Findings](https://arxiv.org/abs/2004.14174)
-- We analyze the generated adversarial examples of two state-of-the-art synonym substitution attacks. We find that their perturbations often do not preserve semantics, and 38% introduce grammatical errors. Human surveys reveal that to successfully preserve semantics, we need to significantly increase the minimum cosine similarities between the embeddings of swapped words and between the sentence encodings of original and perturbed sentences.With constraints adjusted to better preserve semantics and grammaticality, the attack success rate drops by over 70 percentage points.
-- Our Github on Reevaluation results: [Reevaluating-NLP-Adversarial-Examples Github](https://github.com/QData/Reevaluating-NLP-Adversarial-Examples)
-- As we have emphasized in this analysis paper, we recommend researchers and users to be EXTREMELY mindful on the quality of generated adversarial examples in natural language 
-- We recommend the field to use human-evaluation derived thresholds for setting up constraints 
-
-
-
-## Multi-lingual Support
-
-
-- see example code: [https://github.com/QData/TextAttack/blob/master/examples/attack/attack_camembert.py](https://github.com/QData/TextAttack/blob/master/examples/attack/attack_camembert.py) for using our framework to attack French-BERT. 
-
-- see tutorial notebook: [https://textattack.readthedocs.io/en/latest/2notebook/Example_4_CamemBERT.html](https://textattack.readthedocs.io/en/latest/2notebook/Example_4_CamemBERT.html) for using our framework to attack French-BERT. 
-
-- See [README_ZH.md](https://github.com/QData/TextAttack/blob/master/README_ZH.md) for our README in Chinese 
-
-
-
-## Contributing to TextAttack
-
-We welcome suggestions and contributions! Submit an issue or pull request and we will do our best to respond in a timely manner. TextAttack is currently in an "alpha" stage in which we are working to improve its capabilities and design.
-
-See [CONTRIBUTING.md](https://github.com/QData/TextAttack/blob/master/CONTRIBUTING.md) for detailed information on contributing.
-
-## Citing TextAttack
-
-If you use TextAttack for your research, please cite [TextAttack: A Framework for Adversarial Attacks, Data Augmentation, and Adversarial Training in NLP](https://arxiv.org/abs/2005.05909).
+If you use TextAttack for your research, please cite
 
 ```bibtex
-@inproceedings{morris2020textattack,
-  title={TextAttack: A Framework for Adversarial Attacks, Data Augmentation, and Adversarial Training in NLP},
-  author={Morris, John and Lifland, Eli and Yoo, Jin Yong and Grigsby, Jake and Jin, Di and Qi, Yanjun},
-  booktitle={Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations},
-  pages={119--126},
-  year={2020}
-}
 ```
+
