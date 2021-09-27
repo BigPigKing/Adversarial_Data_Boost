@@ -5,8 +5,8 @@
 <p align="center">
   <a href="#about">About</a> •
   <a href="#setup">Setup</a> •
-  <a href="#mainusage">Main Usage</a> •
-  <a href="#otherusage">Other Usage</a> •
+  <a href="#main-usage">Main Usage</a> •
+  <a href="#other-usage">Other Usage</a> •
   <a href="#design">Design</a> 
 </p>
   
