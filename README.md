@@ -12,7 +12,7 @@
   
 ## About
 
-TextAttack is a Python framework for adversarial attacks, data augmentation, and model training in NLP.
+Augmentation Strategy Optimization for Language Understanding is a Python framework for adversarial attacks, data augmentation, and model training in NLP.
 Stacked data augmentation (SDA) is a Python framework for stacking different augmentation methods automatically with reinforcement learning.
 
 ## Setup
@@ -276,7 +276,7 @@ And all the detailed can be accessed.
 
 ## Citing SDA
 
-If you use TextAttack for your research, please cite
+If you use Augmentation Strategy Optimization for Language Understanding for your research, please cite
 
 ```bibtex
 ```
