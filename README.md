@@ -107,8 +107,7 @@ One can check the training process of adversarial training using ***Tensorboard*
 ``` bash
 tensorboard --logdir=runs --samples_per_plugin=text=100
 ```
-![](https://i.imgur.com/gtZsz2R.png)
-![](https://i.imgur.com/qLErIbO.png)
+![](https://i.imgur.com/G8an4JP.png)
 ![](https://i.imgur.com/bKlwMRW.png)
 ![](https://i.imgur.com/XOYbrDj.png)
 
