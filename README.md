@@ -9,7 +9,12 @@
   <a href="#other-usage">Other Usage</a> •
   <a href="#design">Design</a> 
 </p>
-  
+
+## Awards & Recognition
+
+- **2021** - This project received an [Honorable Mention at the 21st Thesis Award by ACLCLP (Association for Computational Linguistics and Chinese Language Processing)](https://www.aclclp.org.tw/grant/p_21.htm).
+- **2022** - Our work related to this project was accepted by [ICASSP 2022](https://ieeexplore.ieee.org/document/9746696).
+
 ## About
 
 Augmentation Strategy Optimization for Language Understanding is a Python framework for adversarial attacks, data augmentation, and model training in NLP.
