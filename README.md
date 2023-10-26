@@ -283,5 +283,18 @@ And all the detailed can be accessed.
 If you use Augmentation Strategy Optimization for Language Understanding for your research, please cite
 
 ```bibtex
+@INPROCEEDINGS{9746696,
+  author={Chu, Chang-Ting and Rohmatillah, Mahdin and Lee, Ching-Hsien and Chien, Jen-Tzung},
+  booktitle={ICASSP 2022 - 2022 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)}, 
+  title={Augmentation Strategy Optimization for Language Understanding}, 
+  year={2022},
+  volume={},
+  number={},
+  pages={7952-7956},
+  abstract={This paper presents a new language processing and understanding where an adaptive data augmentation strategy for individual documents is proposed instead of using one universal policy for the whole dataset. Importantly, a reinforcement learning and understanding method is exploited for document classification where the document encoder, augmenter and classifier are jointly optimized. In particular, a new reward function based on the consistency loss maximization is presented to assure the diversity of the generated documents. Using this method, the reward for adaptive augmentation policy is immediately calculated for every augmented instance without the need of waiting the child model performance metrics as the reward. The experiments on various classification tasks with a strong baseline model show that the augmentation strategy optimization can improve the model training process by providing meaningful augmentation data which eventually result in desirable evaluation performance. Furthermore, the extensive studies on the behavior of policy in different settings are provided in order to assure the diversity of the augmented data that was obtained by the proposed method.},
+  keywords={},
+  doi={10.1109/ICASSP43922.2022.9746696},
+  ISSN={2379-190X},
+  month={May},}
 ```
 
